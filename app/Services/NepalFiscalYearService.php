@@ -31,12 +31,30 @@ class NepalFiscalYearService
     {
         $fiscalYear = $this->fiscalYear($date);
 
-        return DB::transaction(function () use ($fiscalYear) {
-            $sequence = InvoiceSequence::where('fiscal_year', $fiscalYear)->lockForUpdate()->first();
+        return [
+            'fiscal_year' => $fiscalYear,
+            'invoice_no' => sprintf('%s-%04d', $fiscalYear, $this->nextNumber($fiscalYear)),
+        ];
+    }
+
+    public function nextCreditNoteNumber(?CarbonInterface $date = null): array
+    {
+        $fiscalYear = $this->fiscalYear($date);
+
+        return [
+            'fiscal_year' => $fiscalYear,
+            'credit_note_no' => sprintf('CN-%s-%04d', $fiscalYear, $this->nextNumber("credit-note:{$fiscalYear}")),
+        ];
+    }
+
+    private function nextNumber(string $sequenceKey): int
+    {
+        return DB::transaction(function () use ($sequenceKey) {
+            $sequence = InvoiceSequence::where('fiscal_year', $sequenceKey)->lockForUpdate()->first();
 
             if (!$sequence) {
                 $sequence = InvoiceSequence::create([
-                    'fiscal_year' => $fiscalYear,
+                    'fiscal_year' => $sequenceKey,
                     'next_number' => 1,
                 ]);
             }
@@ -45,10 +63,7 @@ class NepalFiscalYearService
             $sequence->next_number = $number + 1;
             $sequence->save();
 
-            return [
-                'fiscal_year' => $fiscalYear,
-                'invoice_no' => sprintf('%s-%04d', $fiscalYear, $number),
-            ];
+            return $number;
         });
     }
 

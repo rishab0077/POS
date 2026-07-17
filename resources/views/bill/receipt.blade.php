@@ -1,11 +1,12 @@
 @php
     $businessConfiguration = app(App\Services\BusinessConfigurationService::class);
-    $business = $businessConfiguration->details();
+    $business = $businessConfiguration->detailsForBill($bill);
     $vatRate = $businessConfiguration->vatRateForBill($bill);
     $invoiceNo = $bill->invoice_no ?: $bill->bill_id;
     $printedBy = auth()->check() ? auth()->user()->name : 'System';
     $printedAt = now();
-    $bsDate = app(App\Services\NepaliDateService::class)->format($bill->created_at);
+    $invoiceAt = $bill->fiscalSnapshot?->invoice_at ?? $bill->locked_at ?? $bill->created_at;
+    $bsDate = app(App\Services\NepaliDateService::class)->format($invoiceAt);
 @endphp
 
 <!DOCTYPE html>
@@ -115,7 +116,7 @@
     <div class="section">
         <p><strong>Invoice No:</strong> {{ $invoiceNo }}</p>
         <p><strong>Fiscal Year:</strong> {{ $bill->fiscal_year ?: 'N/A' }}</p>
-        <p><strong>Date AD:</strong> {{ $bill->created_at->format('Y-m-d H:i') }}</p>
+        <p><strong>Date AD:</strong> {{ $invoiceAt->format('Y-m-d H:i') }}</p>
         <p><strong>Date BS:</strong> {{ $bsDate }}</p>
         <p><strong>Table:</strong> {{ $bill->table ? $bill->table->name : 'Take Away' }}</p>
     </div>

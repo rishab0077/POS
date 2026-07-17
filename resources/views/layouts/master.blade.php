@@ -57,6 +57,7 @@
                     <x-nav-link :href="route('admin.tables.index')" :active="request()->routeIs('admin.tables.index')">Tables</x-nav-link>
                     <x-nav-link :href="route('admin.users.index')" :active="request()->routeIs('admin.users.index')">Manage Users</x-nav-link>
                     <x-nav-link :href="route('admin.print-stations.index')" :active="request()->routeIs('admin.print-stations.*')">Print Stations</x-nav-link>
+                    <x-nav-link :href="route('admin.cbms.index')" :active="request()->routeIs('admin.cbms.*')">CBMS</x-nav-link>
                     <x-nav-link :href="route('admin.system.status')" :active="request()->routeIs('admin.system.*')">System Status</x-nav-link>
                     <x-nav-link :href="route('admin.audit-events.index')" :active="request()->routeIs('admin.audit-events.*')">Audit Events</x-nav-link>
                     <x-nav-link :href="route('admin.restaurant.show.config')" :active="request()->routeIs('restaurant.show.config')">Restaurant Settings</x-nav-link>

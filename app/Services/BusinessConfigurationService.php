@@ -39,12 +39,37 @@ class BusinessConfigurationService
         return $this->details()['vat_rate'];
     }
 
+    public function detailsForBill(Bill $bill): array
+    {
+        $snapshot = $bill->fiscalSnapshot;
+
+        if (!$snapshot) {
+            return $this->details();
+        }
+
+        return [
+            'name' => $snapshot->seller_name,
+            'address' => $snapshot->seller_address ?: '',
+            'phone' => $snapshot->seller_phone ?: '',
+            'email' => $snapshot->seller_email ?: '',
+            'website' => '',
+            'tagline' => '',
+            'tax_registration' => $snapshot->seller_tax_registration,
+            'vat_rate' => (float) $snapshot->vat_rate,
+            'currency_symbol' => $snapshot->currency_symbol,
+        ];
+    }
+
     /**
      * Reprints show the effective rate represented by the stored bill totals,
      * even after the restaurant's current VAT rate changes.
      */
     public function vatRateForBill(Bill $bill): float
     {
+        if ($bill->fiscalSnapshot) {
+            return (float) $bill->fiscalSnapshot->vat_rate;
+        }
+
         $taxableAmount = (float) $bill->taxable_amount;
 
         if ($taxableAmount > 0) {

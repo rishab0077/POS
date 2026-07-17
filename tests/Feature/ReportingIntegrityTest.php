@@ -7,6 +7,7 @@ use App\Models\Bill;
 use App\Models\Menu;
 use App\Models\Table;
 use App\Models\User;
+use App\Services\CbmsService;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -64,6 +65,20 @@ class ReportingIntegrityTest extends TestCase
         $this->assertNotNull($row);
         $this->assertSame(1, (int) $row->no_of_sales);
         $this->assertSame($salePrice, (float) $row->total_amount);
+
+        $snapshot = Bill::whereNotNull('locked_at')->firstOrFail()->fiscalSnapshot;
+        $snapshot->cbmsSubmission->update(['status' => 'submitted']);
+        app(CbmsService::class)->issueCreditNote($snapshot, 'Returned', 'cash', $admin);
+
+        $itemReport = app(ReportingService::class)->salesByItemReport(now()->startOfDay(), now()->endOfDay());
+        $itemRow = collect($itemReport['data'])->firstWhere('menu', $menu->name);
+        $categoryReport = app(ReportingService::class)->salesByCategoryReport(now()->startOfDay(), now()->endOfDay());
+        $categoryRow = collect($categoryReport['data'])->firstWhere('category', $menu->category->first()->name);
+
+        $this->assertSame(0.0, (float) $itemRow->no_of_sales);
+        $this->assertSame(0.0, (float) $itemRow->total_amount);
+        $this->assertSame(0.0, (float) $categoryRow['no_of_sales']);
+        $this->assertSame(0.0, (float) $categoryRow['total_amount']);
     }
 
     public function test_selected_end_date_does_not_include_the_following_calendar_day(): void

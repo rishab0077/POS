@@ -19,4 +19,6 @@ Route::resource('supplier-payments', SupplierPaymentController::class)->only(['i
 Route::get('reports', [InventoryReportController::class, 'index'])->name('reports.index');
 Route::resource('stock-items', StockItemController::class)->except(['show', 'destroy']);
 Route::resource('stock-movements', StockMovementController::class)->only(['index', 'create', 'store']);
+Route::post('returned-items/{fiscalCreditNoteItem}/restore', [StockMovementController::class, 'restoreReturn'])
+    ->name('returned-items.restore');
 Route::resource('menu-mappings', MenuItemStockMappingController::class)->except(['show']);

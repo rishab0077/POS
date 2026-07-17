@@ -7,7 +7,10 @@ use App\Modules\Inventory\Services\StockDeductionService;
 use App\Enums\OrderType;
 use App\Models\Bill;
 use App\Models\BillOrder;
+use App\Models\FiscalInvoiceSnapshot;
 use App\Models\Order;
+use App\Services\BusinessConfigurationService;
+use App\Services\CbmsService;
 use App\Services\NepalFiscalYearService;
 use App\Services\VatCalculatorService;
 use Illuminate\Support\Facades\DB;
@@ -245,7 +248,8 @@ class BillHelper
             ], $buyer, $credit, $discountApproval));
 
             $bill = $bill->fresh();
-            self::deductStock($bill);
+            $inventoryConsumption = self::deductStock($bill);
+            self::snapshotFiscalInvoice($bill, $inventoryConsumption);
 
             return $bill;
         });
@@ -254,6 +258,7 @@ class BillHelper
     public static function getBillOrders($billId)
     {
         $billDetails = Bill::where('id', $billId)
+            ->with('fiscalSnapshot.items')
             ->with('orders')
             ->with('orders.orderDetails')
             ->with('orders.orderDetails.menu')
@@ -263,29 +268,26 @@ class BillHelper
 
         $orderDetails = collect([]);
 
+        if ($billDetails->fiscalSnapshot) {
+            foreach ($billDetails->fiscalSnapshot->items as $item) {
+                self::addOrderDetail(
+                    $orderDetails,
+                    $item->item_name,
+                    (float) $item->quantity,
+                    (float) $item->unit_price,
+                    (float) $item->line_total
+                );
+            }
+
+            return $orderDetails;
+        }
+
         foreach ($billDetails->orders as $order) {
             foreach ($order->orderDetails as $orderDetail) {
                 $itemName = $orderDetail->menu?->name ?? 'Deleted menu item';
                 $quantity = $orderDetail->quantity;
                 $price = (float) ($orderDetail->unit_price ?? $orderDetail->menu?->price ?? 0);
-
-                if ($orderDetails->has($itemName)) {
-                    // Retrieve current values
-                    $currentDetails = $orderDetails->get($itemName);
-
-                    // Update values
-                    $currentDetails['quantity'] += $quantity;
-                    $currentDetails['total'] += $quantity * $price;
-
-                    // Put updated values back
-                    $orderDetails->put($itemName, $currentDetails);
-                } else {
-                    $orderDetails->put($itemName, [
-                        'quantity' => $quantity,
-                        'price' => $price,
-                        'total' => $quantity * $price
-                    ]);
-                }
+                self::addOrderDetail($orderDetails, $itemName, $quantity, $price, $quantity * $price);
             }
         }
 
@@ -465,11 +467,108 @@ class BillHelper
         ];
     }
 
-    private static function deductStock(Bill $bill): void
+    private static function deductStock(Bill $bill): array
     {
         if (class_exists(StockDeductionService::class)) {
-            app(StockDeductionService::class)->deductForBill($bill);
+            return app(StockDeductionService::class)->deductForBill($bill);
         }
+
+        return [];
+    }
+
+    private static function snapshotFiscalInvoice(Bill $bill, array $inventoryConsumption): void
+    {
+        if ($bill->fiscalSnapshot()->exists()) {
+            throw ValidationException::withMessages([
+                'bill' => 'This bill already has a fiscal snapshot.',
+            ]);
+        }
+
+        $bill->loadMissing('orders.orderDetails.menu.category', 'lockedBy');
+        $business = app(BusinessConfigurationService::class)->details();
+        $vatRate = app(VatCalculatorService::class)->vatRate();
+        $items = $bill->orders
+            ->flatMap->orderDetails
+            ->map(function ($detail) use ($vatRate, $inventoryConsumption) {
+                $quantity = (float) $detail->quantity;
+                $unitPrice = (float) ($detail->unit_price ?? $detail->menu?->price ?? 0);
+
+                return [
+                    'source_order_detail_id' => $detail->id,
+                    'item_name' => $detail->menu?->name ?? 'Deleted menu item',
+                    'category_name' => $detail->menu?->category->pluck('name')->sort()->first(),
+                    'inventory_consumption' => $inventoryConsumption[$detail->id] ?? null,
+                    'quantity' => $quantity,
+                    'unit_price' => round($unitPrice, 2),
+                    'line_total' => round($quantity * $unitPrice, 2),
+                    'tax_category' => 'standard',
+                    'vat_rate' => $vatRate,
+                ];
+            })
+            ->values()
+            ->all();
+
+        $itemTotal = round((float) collect($items)->sum('line_total'), 2);
+
+        if ($items === [] || abs($itemTotal - (float) $bill->bill_amount) > 0.001) {
+            throw ValidationException::withMessages([
+                'bill' => 'Invoice item totals do not match the bill subtotal.',
+            ]);
+        }
+
+        $snapshot = [
+            'bill_id' => $bill->id,
+            'invoice_no' => $bill->invoice_no,
+            'fiscal_year' => $bill->fiscal_year,
+            'invoice_at' => $bill->locked_at,
+            'seller_name' => $business['name'],
+            'seller_address' => $business['address'],
+            'seller_phone' => $business['phone'],
+            'seller_email' => $business['email'],
+            'seller_tax_registration' => $business['tax_registration'],
+            'currency_symbol' => $business['currency_symbol'],
+            'buyer_name' => $bill->buyer_name,
+            'buyer_pan' => $bill->buyer_pan,
+            'buyer_address' => $bill->buyer_address,
+            'subtotal' => $bill->bill_amount,
+            'discount' => $bill->discount,
+            'service_charge' => $bill->service_charge_amount,
+            'taxable_sales' => $bill->taxable_amount,
+            'tax_exempted_sales' => 0,
+            'vat_rate' => $vatRate,
+            'vat' => $bill->vat_amount,
+            'total_sales' => $bill->grand_total,
+            'payment_method' => $bill->payment_method,
+            'operator_id' => $bill->locked_by,
+            'operator_name' => $bill->lockedBy?->name ?? auth()->user()?->name ?? 'System',
+        ];
+
+        $snapshot['document_hash'] = hash('sha256', json_encode(
+            ['invoice' => $snapshot, 'items' => $items],
+            JSON_PRESERVE_ZERO_FRACTION | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+        ));
+
+        $fiscalSnapshot = FiscalInvoiceSnapshot::create($snapshot);
+        $fiscalSnapshot->items()->createMany($items);
+        app(CbmsService::class)->queue($fiscalSnapshot);
+    }
+
+    private static function addOrderDetail($orderDetails, string $itemName, float $quantity, float $price, float $total): void
+    {
+        if ($orderDetails->has($itemName)) {
+            $current = $orderDetails->get($itemName);
+            $current['quantity'] += $quantity;
+            $current['total'] += $total;
+            $orderDetails->put($itemName, $current);
+
+            return;
+        }
+
+        $orderDetails->put($itemName, [
+            'quantity' => $quantity,
+            'price' => $price,
+            'total' => $total,
+        ]);
     }
 
     private static function legacyDiscountData($discount): array

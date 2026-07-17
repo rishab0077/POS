@@ -10,11 +10,12 @@ use Illuminate\Support\Facades\DB;
 
 class StockDeductionService
 {
-    public function deductForBill(Bill $bill): void
+    public function deductForBill(Bill $bill): array
     {
         $bill->loadMissing('billOrders.order.orderDetails');
+        $consumption = [];
 
-        DB::transaction(function () use ($bill) {
+        DB::transaction(function () use ($bill, &$consumption) {
             foreach ($bill->billOrders()->whereNull('stock_deducted_at')->with('order.orderDetails')->get() as $billOrder) {
                 if (!$billOrder->order) {
                     continue;
@@ -60,11 +61,20 @@ class StockDeductionService
                             'notes' => 'Auto deduction for bill ' . ($bill->invoice_no ?: $bill->bill_id),
                             'created_by' => auth()->id(),
                         ]);
+
+                        $consumption[$orderDetail->id][] = [
+                            'stock_item_id' => $stockItem->id,
+                            'stock_item_name' => $stockItem->name,
+                            'unit' => $stockItem->unit,
+                            'quantity' => round($quantity, 3),
+                        ];
                     }
                 }
 
                 $billOrder->update(['stock_deducted_at' => now()]);
             }
         });
+
+        return $consumption;
     }
 }

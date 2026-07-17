@@ -5,7 +5,7 @@
         <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
             <div>
                 <h1 class="text-2xl font-semibold text-gray-900">Daily Payment Summary</h1>
-                <p class="text-sm text-gray-600">Credit collections are counted on the date payment is received.</p>
+                <p class="text-sm text-gray-600">Credit collections and full returns are counted on their transaction date.</p>
             </div>
             <form method="GET" action="{{ route('reporting.daily-summary') }}" class="flex items-end gap-2">
                 <div>
@@ -18,13 +18,15 @@
 
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div class="bg-white border rounded p-4">
-                <div class="text-xs uppercase text-gray-500">Collected Sales</div>
+                <div class="text-xs uppercase text-gray-500">Net Collections</div>
                 <div class="text-xl font-semibold">Rs {{ number_format($summary['totals']['collected_sales'], 2) }}</div>
+                <div class="text-xs text-gray-500">Gross Rs {{ number_format($summary['totals']['gross_collections'], 2) }} − payment refunds Rs {{ number_format($summary['totals']['returns'], 2) }}</div>
             </div>
             <div class="bg-white border rounded p-4">
-                <div class="text-xs uppercase text-gray-500">Invoices Issued</div>
-                <div class="text-xl font-semibold">Rs {{ number_format($summary['totals']['invoice_total'], 2) }}</div>
-                <div class="text-xs text-gray-500">{{ $summary['totals']['invoice_count'] }} invoices</div>
+                <div class="text-xs uppercase text-gray-500">Net Sales</div>
+                <div class="text-xl font-semibold">Rs {{ number_format($summary['totals']['net_sales'], 2) }}</div>
+                <div class="text-xs text-gray-500">{{ $summary['totals']['invoice_count'] }} invoices − {{ $summary['totals']['return_count'] }} returns</div>
+                <div class="text-xs text-gray-500">Sales returned Rs {{ number_format($summary['totals']['sales_returns'], 2) }}</div>
             </div>
             <div class="bg-white border rounded p-4">
                 <div class="text-xs uppercase text-gray-500">Credit Issued</div>
@@ -46,7 +48,8 @@
                         <th class="p-3 text-left">Payment Method</th>
                         <th class="p-3 text-right">Direct Sales</th>
                         <th class="p-3 text-right">Credit Collections</th>
-                        <th class="p-3 text-right">Total Collected</th>
+                        <th class="p-3 text-right">Payment Refunds</th>
+                        <th class="p-3 text-right">Net Collected</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -55,6 +58,7 @@
                             <td class="p-3 font-medium">{{ $row['label'] }}</td>
                             <td class="p-3 text-right">Rs {{ number_format($row['direct_sales'], 2) }}</td>
                             <td class="p-3 text-right">Rs {{ number_format($row['credit_collections'], 2) }}</td>
+                            <td class="p-3 text-right text-red-700">Rs {{ number_format($row['returns'], 2) }}</td>
                             <td class="p-3 text-right font-semibold">Rs {{ number_format($row['total'], 2) }}</td>
                         </tr>
                     @endforeach
@@ -62,6 +66,7 @@
                         <td class="p-3 font-semibold">E-Wallet Total (eSewa + Khalti + Fonepay)</td>
                         <td class="p-3 text-right">Rs {{ number_format($summary['wallet']['direct_sales'], 2) }}</td>
                         <td class="p-3 text-right">Rs {{ number_format($summary['wallet']['credit_collections'], 2) }}</td>
+                        <td class="p-3 text-right text-red-700">Rs {{ number_format($summary['wallet']['returns'], 2) }}</td>
                         <td class="p-3 text-right font-semibold">Rs {{ number_format($summary['wallet']['total'], 2) }}</td>
                     </tr>
                 </tbody>
@@ -70,6 +75,7 @@
                         <td class="p-3 font-semibold">Total</td>
                         <td class="p-3 text-right font-semibold">Rs {{ number_format($summary['totals']['direct_sales'], 2) }}</td>
                         <td class="p-3 text-right font-semibold">Rs {{ number_format($summary['totals']['credit_collections'], 2) }}</td>
+                        <td class="p-3 text-right font-semibold text-red-700">Rs {{ number_format($summary['totals']['returns'], 2) }}</td>
                         <td class="p-3 text-right font-semibold">Rs {{ number_format($summary['totals']['collected_sales'], 2) }}</td>
                     </tr>
                 </tfoot>
@@ -82,8 +88,8 @@
                 <strong>Rs {{ number_format($summary['totals']['discount'], 2) }}</strong>
             </div>
             <div class="bg-white border rounded p-4 flex justify-between">
-                <span class="text-gray-600">VAT on Invoices Issued</span>
-                <strong>Rs {{ number_format($summary['totals']['vat'], 2) }}</strong>
+                <span class="text-gray-600">Net VAT (gross {{ number_format($summary['totals']['vat'], 2) }} − returned {{ number_format($summary['totals']['vat_return'], 2) }})</span>
+                <strong>Rs {{ number_format($summary['totals']['net_vat'], 2) }}</strong>
             </div>
         </div>
     </div>

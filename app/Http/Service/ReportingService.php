@@ -6,6 +6,8 @@ use App\Helpers\DateHelper;
 use App\Models\Bill;
 use App\Models\Category;
 use App\Models\CreditPayment;
+use App\Models\FiscalCreditNote;
+use App\Models\RefundTransaction;
 use App\Models\OrderDetail;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -32,6 +34,33 @@ class ReportingService extends Service
             ->selectRaw('SUM(order_details.quantity * COALESCE(order_details.unit_price, menus.price)) as total_amount')
             ->orderBy('no_of_sales', 'desc')
             ->get();
+
+        $returned = DB::table('fiscal_credit_note_items')
+            ->join('fiscal_credit_notes', 'fiscal_credit_notes.id', '=', 'fiscal_credit_note_items.fiscal_credit_note_id')
+            ->whereBetween('fiscal_credit_notes.issued_at', [$startDate, $endDate])
+            ->groupBy('fiscal_credit_note_items.item_name', 'fiscal_credit_note_items.unit_price')
+            ->selectRaw('fiscal_credit_note_items.item_name as menu')
+            ->selectRaw('fiscal_credit_note_items.unit_price as price')
+            ->selectRaw('SUM(fiscal_credit_note_items.quantity) as returned_quantity')
+            ->selectRaw('SUM(fiscal_credit_note_items.line_total) as returned_amount')
+            ->get();
+
+        foreach ($returned as $return) {
+            $row = $data->first(fn ($sale) => $sale->menu === $return->menu
+                && abs((float) $sale->price - (float) $return->price) < 0.001);
+
+            if ($row) {
+                $row->no_of_sales = (float) $row->no_of_sales - (float) $return->returned_quantity;
+                $row->total_amount = (float) $row->total_amount - (float) $return->returned_amount;
+            } else {
+                $data->push((object) [
+                    'menu' => $return->menu,
+                    'price' => $return->price,
+                    'no_of_sales' => -(float) $return->returned_quantity,
+                    'total_amount' => -(float) $return->returned_amount,
+                ]);
+            }
+        }
 
         return $this->successResponse("success", "Sales by item report generated successfully", $data);
     }
@@ -72,6 +101,30 @@ class ReportingService extends Service
             $data[$category->id]['total_amount'] = $categoryData->sum('total_amount');
         }
 
+        $returned = DB::table('fiscal_credit_note_items')
+            ->join('fiscal_credit_notes', 'fiscal_credit_notes.id', '=', 'fiscal_credit_note_items.fiscal_credit_note_id')
+            ->whereBetween('fiscal_credit_notes.issued_at', [$startDate, $endDate])
+            ->groupBy('fiscal_credit_note_items.category_name')
+            ->selectRaw("COALESCE(fiscal_credit_note_items.category_name, 'Uncategorized Returns') as category")
+            ->selectRaw('SUM(fiscal_credit_note_items.quantity) as returned_quantity')
+            ->selectRaw('SUM(fiscal_credit_note_items.line_total) as returned_amount')
+            ->get();
+
+        foreach ($returned as $return) {
+            $key = collect($data)->search(fn ($row) => $row['category'] === $return->category);
+
+            if ($key !== false) {
+                $data[$key]['no_of_sales'] -= (float) $return->returned_quantity;
+                $data[$key]['total_amount'] -= (float) $return->returned_amount;
+            } else {
+                $data[] = [
+                    'category' => $return->category,
+                    'no_of_sales' => -(float) $return->returned_quantity,
+                    'total_amount' => -(float) $return->returned_amount,
+                ];
+            }
+        }
+
         // convert the data to an array
         $data = array_values($data);
         return $this->successResponse("success", "Sales by category report generated successfully", $data);
@@ -90,6 +143,10 @@ class ReportingService extends Service
             ->get();
 
         $creditPayments = CreditPayment::whereBetween('paid_at', [$start, $end])->get();
+        $returns = FiscalCreditNote::whereBetween('issued_at', [$start, $end])->get();
+        $paymentRefunds = RefundTransaction::where('type', 'payment_refund')
+            ->whereBetween('recorded_at', [$start, $end])
+            ->get();
 
         $directByMethod = $directBills
             ->groupBy(fn (Bill $bill) => $bill->payment_method ?: 'cash')
@@ -99,8 +156,12 @@ class ReportingService extends Service
             ->groupBy('payment_method')
             ->map(fn ($payments) => round((float) $payments->sum('amount'), 2));
 
+        $returnsByMethod = $paymentRefunds
+            ->groupBy('payment_method')
+            ->map(fn ($transactions) => round((float) $transactions->sum('amount'), 2));
+
         $preferredOrder = collect(['cash', 'card', 'esewa', 'khalti', 'fonepay']);
-        $observedMethods = $directByMethod->keys()->merge($creditByMethod->keys());
+        $observedMethods = $directByMethod->keys()->merge($creditByMethod->keys())->merge($returnsByMethod->keys());
         $methods = $preferredOrder
             ->merge($observedMethods)
             ->unique()
@@ -108,16 +169,18 @@ class ReportingService extends Service
             ->values();
 
         $labels = array_merge(config('pos.payments'), config('pos.legacy_payments'));
-        $breakdown = $methods->map(function ($method) use ($directByMethod, $creditByMethod, $labels) {
+        $breakdown = $methods->map(function ($method) use ($directByMethod, $creditByMethod, $returnsByMethod, $labels) {
             $direct = (float) $directByMethod->get($method, 0);
             $creditCollection = (float) $creditByMethod->get($method, 0);
+            $returned = (float) $returnsByMethod->get($method, 0);
 
             return [
                 'method' => $method,
                 'label' => $labels[$method] ?? ucfirst(str_replace('_', ' ', $method)),
                 'direct_sales' => round($direct, 2),
                 'credit_collections' => round($creditCollection, 2),
-                'total' => round($direct + $creditCollection, 2),
+                'returns' => round($returned, 2),
+                'total' => round($direct + $creditCollection - $returned, 2),
             ];
         })->all();
 
@@ -136,26 +199,44 @@ class ReportingService extends Service
             ->whereNotNull('locked_at')
             ->where('locked_at', '<=', $end)
             ->get();
+        $creditReturnsThroughDate = FiscalCreditNote::with('snapshot:id,bill_id')
+            ->where('issued_at', '<=', $end)
+            ->get()
+            ->groupBy(fn (FiscalCreditNote $creditNote) => $creditNote->snapshot->bill_id)
+            ->map(fn ($creditNotes) => (float) $creditNotes->sum('total_sales'));
 
         return [
             'date' => $start->toDateString(),
             'breakdown' => $breakdown,
             'totals' => [
                 'collected_sales' => round((float) collect($breakdown)->sum('total'), 2),
+                'gross_collections' => round((float) $directBills->sum('grand_total') + (float) $creditPayments->sum('amount'), 2),
+                'returns' => round((float) $paymentRefunds->sum('amount'), 2),
+                'sales_returns' => round((float) $returns->sum('total_sales'), 2),
                 'direct_sales' => round((float) $directBills->sum('grand_total'), 2),
                 'credit_collections' => round((float) $creditPayments->sum('amount'), 2),
                 'invoice_total' => round((float) $allInvoices->sum('grand_total'), 2),
                 'invoice_count' => $allInvoices->count(),
+                'net_sales' => round((float) $allInvoices->sum('grand_total') - (float) $returns->sum('total_sales'), 2),
+                'return_count' => $returns->count(),
                 'credit_issued' => round((float) $creditIssued->sum('grand_total'), 2),
                 'discount' => round((float) $allInvoices->sum('discount'), 2),
                 'vat' => round((float) $allInvoices->sum('vat_amount'), 2),
-                'outstanding_credit' => round((float) $creditBillsThroughDate->sum(function (Bill $bill) {
-                    return max((float) $bill->grand_total - (float) ($bill->paid_through_date ?? 0), 0);
+                'vat_return' => round((float) $returns->sum('vat'), 2),
+                'net_vat' => round((float) $allInvoices->sum('vat_amount') - (float) $returns->sum('vat'), 2),
+                'outstanding_credit' => round((float) $creditBillsThroughDate->sum(function (Bill $bill) use ($creditReturnsThroughDate) {
+                    return max(
+                        (float) $bill->grand_total
+                        - (float) $creditReturnsThroughDate->get($bill->id, 0)
+                        - (float) ($bill->paid_through_date ?? 0),
+                        0
+                    );
                 }), 2),
             ],
             'wallet' => [
                 'direct_sales' => round((float) $wallet->sum('direct_sales'), 2),
                 'credit_collections' => round((float) $wallet->sum('credit_collections'), 2),
+                'returns' => round((float) $wallet->sum('returns'), 2),
                 'total' => round((float) $wallet->sum('total'), 2),
             ],
         ];

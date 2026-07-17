@@ -28,6 +28,12 @@ class Kernel extends ConsoleKernel
         $schedule->command('operations:check-alerts')
             ->everyFifteenMinutes()
             ->withoutOverlapping();
+
+        if (config('services.cbms.enabled')) {
+            $schedule->command('cbms:dispatch')
+                ->everyMinute()
+                ->withoutOverlapping();
+        }
     }
 
     /**

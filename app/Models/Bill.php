@@ -36,6 +36,7 @@ class Bill extends Model
         'credit_customer_contact',
         'credit_status',
         'credit_paid_amount',
+        'credit_returned_amount',
         'credit_settled_at',
         'notes',
         'status',
@@ -54,6 +55,7 @@ class Bill extends Model
         'service_charge_amount' => 'decimal:2',
         'grand_total' => 'decimal:2',
         'credit_paid_amount' => 'decimal:2',
+        'credit_returned_amount' => 'decimal:2',
         'credit_settled_at' => 'datetime',
         'printed_at' => 'datetime',
         'locked_at' => 'datetime',
@@ -99,9 +101,17 @@ class Bill extends Model
         return $this->hasMany(CreditPayment::class);
     }
 
+    public function fiscalSnapshot()
+    {
+        return $this->hasOne(FiscalInvoiceSnapshot::class);
+    }
+
     public function creditBalance(): float
     {
-        return max(round((float) $this->grand_total - (float) $this->credit_paid_amount, 2), 0);
+        return max(round(
+            (float) $this->grand_total - (float) $this->credit_returned_amount - (float) $this->credit_paid_amount,
+            2
+        ), 0);
     }
 
     public function isLocked(): bool

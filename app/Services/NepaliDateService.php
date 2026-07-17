@@ -55,7 +55,7 @@ class NepaliDateService
     {
         $date = CarbonImmutable::instance($date)->startOfDay();
         $year = $this->resolveBsYear($date);
-        $daysIntoYear = $date->diffInDays($this->bsYearStartAd($year));
+        $daysIntoYear = $this->bsYearStartAd($year)->diffInDays($date);
 
         foreach (self::MONTH_DAYS[$year] as $index => $daysInMonth) {
             if ($daysIntoYear < $daysInMonth) {

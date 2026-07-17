@@ -26,7 +26,7 @@ class BillPrinter
     ) {
         $businessConfiguration = app(BusinessConfigurationService::class);
 
-        $this->business = $businessConfiguration->details();
+        $this->business = $businessConfiguration->detailsForBill($billDetails);
         $this->vatRate = $businessConfiguration->vatRateForBill($billDetails);
         $this->currencySymbol = $this->business['currency_symbol'];
         $this->copyType = $copyType;
@@ -68,8 +68,9 @@ class BillPrinter
 
         $this->printDash();
         $this->printer->setJustification(Printer::JUSTIFY_LEFT);
-        $this->detailLine('Bill Date', $this->billDetails->created_at->format('Y-m-d'));
-        $this->detailLine('Bill Time', $this->billDetails->created_at->format('h:i A'));
+        $invoiceAt = $this->invoiceAt();
+        $this->detailLine('Bill Date', $invoiceAt->format('Y-m-d'));
+        $this->detailLine('Bill Time', $invoiceAt->format('h:i A'));
         $this->detailLine('Table', $this->tableName());
         $this->detailLine('Cashier', $this->cashierName());
         $this->printDash();
@@ -125,8 +126,8 @@ class BillPrinter
         $this->printer->setJustification(Printer::JUSTIFY_LEFT);
         $this->detailLine('Invoice Number', $this->billDetails->invoice_no ?: $this->billDetails->bill_id);
         $this->detailLine('Fiscal Year', $this->billDetails->fiscal_year ?: 'N/A');
-        $this->detailLine('Bill Date', $this->billDetails->created_at->format('Y-m-d'));
-        $this->detailLine('Bill Time', $this->billDetails->created_at->format('h:i A'));
+        $this->detailLine('Bill Date', $this->invoiceAt()->format('Y-m-d'));
+        $this->detailLine('Bill Time', $this->invoiceAt()->format('h:i A'));
         $this->detailLine('Table', $this->tableName());
 
         if ($this->hasSourceTable()) {
@@ -305,5 +306,12 @@ class BillPrinter
         return $this->billDetails->lockedBy?->name
             ?? Auth::user()?->name
             ?? 'System';
+    }
+
+    private function invoiceAt()
+    {
+        return $this->billDetails->fiscalSnapshot?->invoice_at
+            ?? $this->billDetails->locked_at
+            ?? $this->billDetails->created_at;
     }
 }

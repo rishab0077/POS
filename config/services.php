@@ -31,4 +31,12 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    'cbms' => [
+        'enabled' => (bool) env('CBMS_ENABLED', false),
+        'url' => env('CBMS_URL', 'https://cbapi.ird.gov.np'),
+        'username' => env('CBMS_USERNAME'),
+        'password' => env('CBMS_PASSWORD'),
+        'timeout' => (int) env('CBMS_TIMEOUT', 15),
+    ],
+
 ];

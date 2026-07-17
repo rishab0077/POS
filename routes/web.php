@@ -3,6 +3,7 @@
 use App\Http\Controllers\Admin\AdminController;
 use App\Http\Controllers\Admin\AuditEventController;
 use App\Http\Controllers\Admin\CategoryController;
+use App\Http\Controllers\Admin\CbmsSubmissionController;
 use App\Http\Controllers\Admin\MenuController;
 use App\Http\Controllers\Admin\ReservationController;
 use App\Http\Controllers\Admin\TableController;
@@ -75,6 +76,11 @@ Route::middleware(['private.access', 'auth', 'admin'])->name('admin.')->prefix('
     Route::put('/print-stations/{printStation}', [PrintStationController::class, 'update'])->name('print-stations.update');
     Route::post('/print-stations/{printStation}/regenerate-token', [PrintStationController::class, 'regenerateToken'])->name('print-stations.regenerate-token');
     Route::post('/print-jobs/{printJob}/retry', [PrintStationController::class, 'retry'])->name('print-jobs.retry');
+    Route::get('/cbms', [CbmsSubmissionController::class, 'index'])->name('cbms.index');
+    Route::post('/cbms/{cbmsSubmission}/retry', [CbmsSubmissionController::class, 'retry'])->name('cbms.retry');
+    Route::post('/cbms/{cbmsSubmission}/credit-note', [CbmsSubmissionController::class, 'issueCreditNote'])->name('cbms.credit-note.issue');
+    Route::post('/cbms/credit-notes/{fiscalCreditNote}/retry', [CbmsSubmissionController::class, 'retryCreditNote'])->name('cbms.credit-note.retry');
+    Route::get('/cbms/credit-notes/{fiscalCreditNote}/print', [CbmsSubmissionController::class, 'printCreditNote'])->name('cbms.credit-note.print');
     Route::get('/system/status', SystemStatusController::class)->name('system.status');
     Route::get('/audit-events', [AuditEventController::class, 'index'])->name('audit-events.index');
     Route::get('/audit-events/export', [AuditEventController::class, 'export'])

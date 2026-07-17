@@ -40,6 +40,7 @@
                         <th class="p-3 text-left">Invoice Date</th>
                         <th class="p-3 text-right">Total</th>
                         <th class="p-3 text-right">Paid</th>
+                        <th class="p-3 text-right">Returned</th>
                         <th class="p-3 text-right">Balance</th>
                         <th class="p-3 text-left">Status</th>
                         <th class="p-3 text-left">Payment</th>
@@ -56,6 +57,7 @@
                             <td class="p-3">{{ ($bill->locked_at ?: $bill->created_at)->format('Y-m-d') }}</td>
                             <td class="p-3 text-right">Rs {{ number_format($bill->grand_total, 2) }}</td>
                             <td class="p-3 text-right">Rs {{ number_format($bill->credit_paid_amount, 2) }}</td>
+                            <td class="p-3 text-right">Rs {{ number_format($bill->credit_returned_amount, 2) }}</td>
                             <td class="p-3 text-right font-semibold">Rs {{ number_format($bill->creditBalance(), 2) }}</td>
                             <td class="p-3">{{ ucfirst($bill->credit_status ?: 'open') }}</td>
                             <td class="p-3 min-w-72">
@@ -95,7 +97,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="8" class="p-4 text-center text-gray-500">No credit bills found.</td></tr>
+                        <tr><td colspan="9" class="p-4 text-center text-gray-500">No credit bills found.</td></tr>
                     @endforelse
                 </tbody>
             </table>

@@ -121,7 +121,10 @@ class CreditController extends Controller
             ]);
 
             $paidAmount = round((float) $bill->credit_paid_amount + $amount, 2);
-            $settled = $paidAmount >= round((float) $bill->grand_total, 2);
+            $settled = $paidAmount >= round(
+                (float) $bill->grand_total - (float) $bill->credit_returned_amount,
+                2
+            );
 
             $bill->update([
                 'credit_paid_amount' => $paidAmount,
