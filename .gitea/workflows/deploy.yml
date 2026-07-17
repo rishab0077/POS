@@ -1,0 +1,31 @@
+name: Deploy Production Manually
+
+on:
+  workflow_dispatch:
+
+env:
+  REGISTRY_HOST: git.aayutech.dev
+  APP_IMAGE_REPOSITORY: git.aayutech.dev/rishab/restaurant-pos-app
+  WEB_IMAGE_REPOSITORY: git.aayutech.dev/rishab/restaurant-pos-web
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    timeout-minutes: 25
+    env:
+      APP_IMAGE_TAG: sha-${{ github.sha }}
+      DEPLOY_SHA: ${{ github.sha }}
+      DEPLOY_PATH: /opt/restaurant-pos
+      VM_HOST: ${{ vars.VM_HOST }}
+      VM_PORT: ${{ vars.VM_PORT }}
+      VM_USERNAME: ${{ vars.VM_USERNAME }}
+      VPS_SSH_PRIVATE_KEY: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+      DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Deploy selected main commit
+        run: bash scripts/ci/deploy-over-ssh.sh

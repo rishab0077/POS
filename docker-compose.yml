@@ -1,0 +1,114 @@
+name: restaurant-pos
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    image: ${APP_IMAGE_REPOSITORY:-restaurant-pos-app}:${APP_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      mysql:
+        condition: service_healthy
+    volumes:
+      - storage_data:/var/www/html/storage
+    networks:
+      - internal
+
+  nginx:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: web
+    image: ${WEB_IMAGE_REPOSITORY:-restaurant-pos-web}:${APP_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      - app
+      - soketi
+    ports:
+      - "127.0.0.1:${APP_HTTP_PORT:-8097}:80"
+    volumes:
+      - storage_data:/var/www/html/storage:ro
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --header='Host: ${APP_HEALTH_HOST:-localhost}' -O /dev/null http://127.0.0.1/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE:-restaurant_pos}
+      MYSQL_USER: ${DB_USERNAME:-restaurant_pos}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-CHANGE_ME_DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-CHANGE_ME_ROOT_DB_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - internal
+
+  soketi:
+    # Stable Soketi 1.6 image; intentionally avoids the mutable latest tag.
+    image: quay.io/soketi/soketi:1.6-16-alpine
+    restart: unless-stopped
+    environment:
+      SOKETI_DEBUG: ${SOKETI_DEBUG:-0}
+      SOKETI_DEFAULT_APP_ID: ${PUSHER_APP_ID:-restaurant-pos}
+      SOKETI_DEFAULT_APP_KEY: ${PUSHER_APP_KEY:-restaurant-pos-key}
+      SOKETI_DEFAULT_APP_SECRET: ${PUSHER_APP_SECRET:-CHANGE_ME_SOKETI_SECRET}
+    ports:
+      - "127.0.0.1:${SOKETI_PORT:-6001}:6001"
+    networks:
+      - internal
+
+  queue:
+    image: ${APP_IMAGE_REPOSITORY:-restaurant-pos-app}:${APP_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      mysql:
+        condition: service_healthy
+      app:
+        condition: service_started
+    volumes:
+      - storage_data:/var/www/html/storage
+    command: php artisan queue:work --sleep=3 --tries=3 --timeout=90
+    networks:
+      - internal
+
+  scheduler:
+    image: ${APP_IMAGE_REPOSITORY:-restaurant-pos-app}:${APP_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      mysql:
+        condition: service_healthy
+      app:
+        condition: service_started
+    volumes:
+      - storage_data:/var/www/html/storage
+    command: sh -c "while true; do php artisan schedule:run --verbose --no-interaction; sleep 60; done"
+    networks:
+      - internal
+
+volumes:
+  mysql_data:
+  storage_data:
+
+networks:
+  internal:
+    driver: bridge

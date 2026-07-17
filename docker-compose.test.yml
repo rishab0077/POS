@@ -1,0 +1,36 @@
+name: restaurant-pos-automated
+
+x-test-environment: &test-environment
+  APP_ENV: testing
+  APP_DEBUG: "false"
+  APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+  APP_URL: http://localhost
+  APP_HEALTH_HOST: 127.0.0.1
+  DB_DATABASE: restaurant_pos_automated
+  DB_USERNAME: restaurant_pos_automated
+  DB_PASSWORD: automated_database_password
+  MYSQL_ROOT_PASSWORD: automated_root_password
+  BROADCAST_DRIVER: log
+  CACHE_DRIVER: array
+  QUEUE_CONNECTION: sync
+  SESSION_DRIVER: array
+
+services:
+  app:
+    build:
+      target: test
+    image: restaurant-pos-test:latest
+    environment: *test-environment
+
+  mysql:
+    environment:
+      MYSQL_DATABASE: restaurant_pos_automated
+      MYSQL_USER: restaurant_pos_automated
+      MYSQL_PASSWORD: automated_database_password
+      MYSQL_ROOT_PASSWORD: automated_root_password
+
+  queue:
+    environment: *test-environment
+
+  scheduler:
+    environment: *test-environment

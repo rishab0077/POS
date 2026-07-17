@@ -1,0 +1,19 @@
+title = "Restaurant POS secret scanning"
+
+[allowlist]
+description = "Generated/vendor trees and documented placeholder values"
+paths = [
+    '''^vendor/''',
+    '''^node_modules/''',
+    '''^public/vendor/''',
+    '''^storage/''',
+    '''^bootstrap/cache/''',
+    '''^\.phpunit\.result\.cache$''',
+    '''^docs/.*\.docx$''',
+]
+regexes = [
+    '''CHANGE_ME_[A-Z0-9_]+''',
+    '''base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=''',
+    '''ci_[A-Za-z0-9_!]+''',
+    '''automated_[A-Za-z0-9_!]+''',
+]

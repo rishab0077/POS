@@ -1,0 +1,8 @@
+{
+  "BaseUrl": "https://your-pos-domain.example",
+  "Token": "ps_copy_the_station_token_from_admin",
+  "ServiceClientId": "",
+  "ServiceClientSecret": "",
+  "PollSeconds": 2,
+  "Limit": 5
+}
