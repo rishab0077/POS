@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Bill;
 use App\Models\Restaurant;
+use App\Models\User;
 use App\Services\BusinessConfigurationService;
 use App\Services\PrintPayloadService;
 use App\Services\VatCalculatorService;
@@ -82,5 +83,18 @@ class BusinessConfigurationTest extends TestCase
         $restaurant = Restaurant::firstOrFail();
         $this->assertSame('Operator Managed Name', $restaurant->name);
         $this->assertSame(12.5, (float) $restaurant->tax_rate);
+    }
+
+    public function test_sidebar_uses_restaurant_name_as_its_brand(): void
+    {
+        $this->seed(DatabaseSeeder::class);
+        Restaurant::firstOrFail()->update(['name' => 'Amber Cafe']);
+
+        $this->actingAs(User::firstOrFail());
+
+        $this->assertStringContainsString(
+            '<span class="text-lg font-semibold tracking-widest text-white uppercase">Amber Cafe</span>',
+            view('admin.index')->render()
+        );
     }
 }

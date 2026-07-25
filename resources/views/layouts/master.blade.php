@@ -12,6 +12,7 @@
 </head>
 
 <body class="font-sans antialiased">
+    @php $businessName = app(App\Services\BusinessConfigurationService::class)->details()['name']; @endphp
     <div class="flex h-screen" x-data="{ sidebarOpen: false }">
 
         <div x-show="sidebarOpen" class="fixed inset-0 z-40 bg-opacity-75" @click="sidebarOpen = false" x-cloak>
@@ -21,9 +22,7 @@
             class="fixed inset-y-0 left-0 z-50 flex flex-col flex-shrink-0 w-64 bg-gray-800 border-r border-gray-700 transform transition-transform duration-300 md:relative md:translate-x-0"
             :class="{ 'translate-x-0': sidebarOpen, '-translate-x-full': !sidebarOpen }">
             <div class="flex items-center justify-between px-6 py-4 border-b border-gray-700">
-                <a href="#" class="text-lg font-semibold tracking-widest text-white uppercase">
-                    {{ Auth::user()->name }}
-                </a>
+                <span class="text-lg font-semibold tracking-widest text-white uppercase">{{ $businessName }}</span>
                 <button class="text-gray-400 md:hidden hover:text-white" @click="sidebarOpen = false">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12">
@@ -76,7 +75,7 @@
 
         <div class="flex flex-col flex-grow">
             <header class="flex items-center justify-between p-4 bg-gray-800 shadow-md md:hidden">
-                <a href="#" class="text-lg font-semibold text-white">{{ config('app.name', 'Restaurant POS') }}</a>
+                <span class="text-lg font-semibold text-white">{{ $businessName }}</span>
                 <button @click.stop="sidebarOpen = !sidebarOpen" class="text-gray-400 focus:outline-none">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
