@@ -339,6 +339,7 @@ CBMS remains off with `CBMS_ENABLED=false`. This allows normal local use and rec
 - 2026-07-25: affected security suite after repository cleanup — 7 passed, 33 assertions.
 - 2026-07-25: complete regression suite after repository cleanup — 130 passed, 684 assertions.
 - 2026-07-25: Composer manifest and lock validation passed after removing Laravel Sail; complete regression suite after legacy deployment cleanup — 130 passed, 684 assertions.
+- 2026-07-26: production LAN HTTP asset regression — 2 passed, 10 assertions; complete suite — 131 passed, 685 assertions.
 
 ## Change log
 
@@ -375,3 +376,7 @@ CBMS remains off with `CBMS_ENABLED=false`. This allows normal local use and rec
 - Replaced the sidebar account-name label and mobile app label with the database-configured restaurant name, rendered as plain text, and configured the local installation as Amber cafe.
 - Removed obsolete remote-session attachments, self-hosted CI/runner and SSH deployment files, the tracked environment backup, and the stale credential-bearing root print-station config; added ignore rules to prevent them from being recommitted.
 - Removed the unreferenced 11.2 MB `printPdf.exe`, legacy PHP 7.4/8.0/8.1 Sail runtimes and launcher, superseded host backup/install scripts, and the unused Laravel Sail development dependency. Retained tests, repository-maintenance files, and future HTTPS Nginx examples in source control.
+
+### 2026-07-26
+
+- Removed the unconditional production HTTPS scheme override so LAN deployments using an HTTP `APP_URL` load compiled CSS and JavaScript correctly while HTTPS deployments continue to follow their configured URL and trusted proxy headers.

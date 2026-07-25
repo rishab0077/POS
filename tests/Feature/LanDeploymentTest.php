@@ -2,6 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\Providers\AppServiceProvider;
+use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\URL;
 use Tests\TestCase;
 
 class LanDeploymentTest extends TestCase
@@ -23,5 +26,15 @@ class LanDeploymentTest extends TestCase
         $this->assertStringContainsString('PUSHER_HOST=soketi', $productionEnvironment);
         $this->assertStringNotContainsString('VITE_PUSHER', $dockerEnvironment);
         $this->assertStringNotContainsString('VITE_PUSHER', $productionEnvironment);
+    }
+
+    public function test_production_lan_url_does_not_force_https_assets(): void
+    {
+        $this->app->detectEnvironment(fn () => 'production');
+        Config::set('app.url', 'http://192.168.1.64:8097');
+
+        (new AppServiceProvider($this->app))->boot();
+
+        $this->assertStringStartsWith('http://', URL::to('/build/assets/app.css'));
     }
 }
