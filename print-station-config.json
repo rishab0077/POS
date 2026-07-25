@@ -1,8 +1,0 @@
-{
-  "BaseUrl": "https://pos.example.com/",
-  "Token": "ps_G71ByLzSRZwIAbTLwAkMIgOG5Hcok8hSiMVOFzwyOE8GmBbt",
-  "ServiceClientId": "",
-  "ServiceClientSecret": "",
-  "PollSeconds": 2,
-  "Limit": 5
-}

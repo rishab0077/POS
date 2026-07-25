@@ -21,7 +21,7 @@ This file is the shared handoff for the project. Every agent or chat that change
 - Production images exclude Node.js and npm and include the MariaDB backup client and MySQL 8 authentication connector required by `backup:database`.
 - `npm ci` and the production frontend build complete with zero reported npm vulnerabilities.
 - Production uses the database queue; the test profile uses the synchronous queue.
-- Automated verification currently passes: **131 tests, 690 assertions**.
+- Automated verification currently passes: **130 tests, 684 assertions**.
 
 ## Completed work
 
@@ -254,6 +254,7 @@ Key files:
 - The production Compose stack has been built, migrated, seeded, and smoke-tested locally on `127.0.0.1:8097`; all six runtime services started successfully.
 - The current ignored deployment `.env` is configured for private-LAN access on port 8097, and the app responds through the server's LAN address. The target PC still needs an Administrator-created Windows Firewall rule before phone access can be confirmed.
 - The shared desktop and mobile headers display the database-configured restaurant name as plain branding; this installation is configured as **Amber cafe**.
+- The deployment branch excludes remote-session attachments, obsolete self-hosted CI/SSH deployment assets, the tracked environment backup, and the stale root print-station credential file. The required placeholder environment and print-station templates remain available.
 
 Key files:
 
@@ -334,6 +335,9 @@ CBMS remains off with `CBMS_ENABLED=false`. This allows normal local use and rec
 - 2026-07-25: current deployment configured to bind port 8097 on all host interfaces; LAN-address `/health` and `/login` checks returned HTTP 200 and the TCP port check passed. External phone access remains unverified because Windows rejected the profile and firewall changes without an Administrator session.
 - 2026-07-25: restaurant-branding focused suite — 3 passed, 12 assertions; the running container reported the configured Amber cafe business name.
 - 2026-07-25: complete regression suite after restaurant header branding — 131 passed, 690 assertions.
+- 2026-07-25: repository cleanup scan confirmed the working tree has no remaining self-hosted registry, runner-token, SSH-deployment, remote-attachment, tracked environment-backup, or stale root print-station-config artifacts; the Git remote is GitHub-only.
+- 2026-07-25: affected security suite after repository cleanup — 7 passed, 33 assertions.
+- 2026-07-25: complete regression suite after repository cleanup — 130 passed, 684 assertions.
 
 ## Change log
 
@@ -368,3 +372,4 @@ CBMS remains off with `CBMS_ENABLED=false`. This allows normal local use and rec
 - Deployed and smoke-tested the production Compose stack locally on port 8097 after creating and validating a database backup.
 - Configured the current ignored deployment environment for LAN access and verified the server-side LAN URL; documented the remaining Administrator-only Windows Firewall prerequisite.
 - Replaced the sidebar account-name label and mobile app label with the database-configured restaurant name, rendered as plain text, and configured the local installation as Amber cafe.
+- Removed obsolete remote-session attachments, self-hosted CI/runner and SSH deployment files, the tracked environment backup, and the stale credential-bearing root print-station config; added ignore rules to prevent them from being recommitted.

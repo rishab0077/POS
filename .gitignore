@@ -10,6 +10,11 @@
 /vendor
 .env
 .env.backup
+.env.*.backup
+/.codex-remote-attachments/
+/.gitea/
+/deployment/gitea-runner/
+/print-station-config.json
 .phpunit.result.cache
 docker-compose.override.yml
 /deploy.yml

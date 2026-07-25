@@ -117,15 +117,4 @@ class PhaseThreeCSecurityTest extends TestCase
             ->assertTooManyRequests();
     }
 
-    public function test_ci_security_checks_are_present(): void
-    {
-        $workflow = file_get_contents(base_path('.gitea/workflows/ci.yml'));
-
-        $this->assertStringContainsString('Run tests', $workflow);
-        $this->assertStringContainsString('Deploy tested images to production', $workflow);
-        $this->assertStringContainsString('composer audit', $workflow);
-        $this->assertStringContainsString('npm audit --omit=dev --audit-level=high', $workflow);
-        $this->assertStringContainsString('gitleaks', $workflow);
-        $this->assertStringContainsString('trivy', $workflow);
-    }
 }
