@@ -33,6 +33,7 @@ return [
 
     'cbms' => [
         'enabled' => (bool) env('CBMS_ENABLED', false),
+        'acceptance_mode' => (bool) env('CBMS_ACCEPTANCE_MODE', false),
         'url' => env('CBMS_URL', 'https://cbapi.ird.gov.np'),
         'username' => env('CBMS_USERNAME'),
         'password' => env('CBMS_PASSWORD'),

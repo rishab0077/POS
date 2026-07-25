@@ -35,6 +35,10 @@ class SubmitCbmsCreditNote implements ShouldBeUnique, ShouldQueue
 
     public function handle(CbmsService $service): void
     {
+        if (!$service->automaticDeliveryReady()) {
+            return;
+        }
+
         Cache::lock("cbms:credit-note:{$this->creditNoteId}", 45)->block(5, function () use ($service) {
             $creditNote = FiscalCreditNote::findOrFail($this->creditNoteId);
 

@@ -4,6 +4,7 @@ namespace App\Console;
 
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
+use Illuminate\Support\Facades\Cache;
 
 class Kernel extends ConsoleKernel
 {
@@ -15,6 +16,10 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule)
     {
+        $schedule->call(fn () => Cache::forever('operations.scheduler_last_seen', now()->toIso8601String()))
+            ->name('operations:scheduler-heartbeat')
+            ->everyMinute();
+
         if (config('operations.backup.enabled')) {
             $schedule->command('backup:database')
                 ->dailyAt('02:00')
@@ -29,7 +34,7 @@ class Kernel extends ConsoleKernel
             ->everyFifteenMinutes()
             ->withoutOverlapping();
 
-        if (config('services.cbms.enabled')) {
+        if (config('services.cbms.enabled') && !config('services.cbms.acceptance_mode')) {
             $schedule->command('cbms:dispatch')
                 ->everyMinute()
                 ->withoutOverlapping();

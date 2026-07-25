@@ -35,6 +35,10 @@ class SubmitCbmsInvoice implements ShouldBeUnique, ShouldQueue
 
     public function handle(CbmsService $service): void
     {
+        if (!$service->automaticDeliveryReady()) {
+            return;
+        }
+
         Cache::lock("cbms:submission:{$this->submissionId}", 45)->block(5, function () use ($service) {
             $submission = CbmsSubmission::findOrFail($this->submissionId);
 

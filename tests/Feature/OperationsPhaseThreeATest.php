@@ -38,6 +38,8 @@ class OperationsPhaseThreeATest extends TestCase
         config()->set('app.key', 'must-not-appear-in-html-12345678');
         config()->set('database.connections.mysql.password', 'secret-db-password');
         config()->set('broadcasting.connections.pusher.secret', 'secret-soketi-value');
+        config()->set('services.cbms.username', 'secret-cbms-user');
+        config()->set('services.cbms.password', 'secret-cbms-password');
 
         $admin = User::factory()->create(['category_id' => UserRole::Admin]);
 
@@ -47,7 +49,9 @@ class OperationsPhaseThreeATest extends TestCase
             ->assertOk()
             ->assertDontSee('must-not-appear-in-html')
             ->assertDontSee('secret-db-password')
-            ->assertDontSee('secret-soketi-value');
+            ->assertDontSee('secret-soketi-value')
+            ->assertDontSee('secret-cbms-user')
+            ->assertDontSee('secret-cbms-password');
     }
 
     public function test_backup_validation_rejects_missing_file(): void
@@ -85,8 +89,27 @@ class OperationsPhaseThreeATest extends TestCase
         $this->assertArrayHasKey('app', $payload);
         $this->assertArrayHasKey('database', $payload);
         $this->assertArrayHasKey('queue', $payload);
+        $this->assertArrayHasKey('scheduler', $payload);
+        $this->assertArrayHasKey('clock', $payload);
+        $this->assertArrayHasKey('cbms', $payload);
         $this->assertArrayHasKey('backup', $payload);
         $this->assertArrayHasKey('printing', $payload);
+    }
+
+    public function test_cbms_failures_and_aged_submissions_use_existing_operations_alerts(): void
+    {
+        config()->set('operations.monitoring.cbms_pending_max_minutes', 15);
+        $findings = app(SystemStatusService::class)->alertFindings([
+            'scheduler' => ['ok' => true],
+            'clock' => ['ok' => true],
+            'cbms' => ['enabled' => true, 'failed' => 2, 'oldest_outstanding_age_minutes' => 16],
+            'queue' => ['failed_jobs_count' => 0],
+            'backup' => ['latest' => ['age_minutes' => 0]],
+            'disk' => ['used_percent' => 0],
+            'printing' => [],
+        ]);
+
+        $this->assertSame(['cbms_failed', 'cbms_pending'], array_column($findings, 'key'));
     }
 
     public function test_alert_command_logs_warnings_without_smtp_configuration(): void

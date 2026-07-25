@@ -60,7 +60,7 @@ class CbmsSubmissionController extends Controller
 
     public function retry(CbmsSubmission $cbmsSubmission, CbmsService $cbms, AuditLogger $audit)
     {
-        abort_unless($cbms->ready(), 409, 'CBMS is disabled or credentials are missing.');
+        abort_unless($cbms->automaticDeliveryReady(), 409, 'Automatic CBMS delivery is unavailable during acceptance mode.');
         abort_unless($cbmsSubmission->status === 'failed', 409, 'Only failed CBMS submissions can be retried.');
 
         $before = $cbmsSubmission->only(['id', 'status', 'attempts', 'response_code', 'last_error']);
@@ -126,7 +126,7 @@ class CbmsSubmissionController extends Controller
         CbmsService $cbms,
         AuditLogger $audit
     ) {
-        abort_unless($cbms->ready(), 409, 'CBMS is disabled or credentials are missing.');
+        abort_unless($cbms->automaticDeliveryReady(), 409, 'Automatic CBMS delivery is unavailable during acceptance mode.');
         abort_unless($fiscalCreditNote->status === 'failed', 409, 'Only failed credit notes can be retried.');
 
         $before = $fiscalCreditNote->only(['id', 'status', 'attempts', 'response_code', 'last_error']);

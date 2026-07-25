@@ -29,7 +29,7 @@ services:
       - app
       - soketi
     ports:
-      - "127.0.0.1:${APP_HTTP_PORT:-8097}:80"
+      - "${APP_BIND_ADDRESS:-127.0.0.1}:${APP_HTTP_PORT:-8097}:80"
     volumes:
       - storage_data:/var/www/html/storage:ro
     networks:

@@ -2,8 +2,12 @@
 
 namespace App\Services\Operations;
 
+use App\Models\CbmsSubmission;
+use App\Models\FiscalCreditNote;
 use App\Models\PrintJob;
 use App\Models\PrintStation;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Throwable;
@@ -21,6 +25,9 @@ class SystemStatusService
             'database' => $this->databaseStatus(),
             'migrations' => $this->migrationStatus(),
             'queue' => $this->queueStatus(),
+            'scheduler' => $this->schedulerStatus(),
+            'clock' => $this->clockStatus(),
+            'cbms' => $this->cbmsStatus(),
             'storage' => $this->storageStatus(),
             'backup' => $this->backupStatus(),
             'printing' => $this->printingStatus(),
@@ -34,6 +41,43 @@ class SystemStatusService
     {
         $status ??= $this->status();
         $findings = [];
+
+        if (!data_get($status, 'scheduler.ok')) {
+            $findings[] = [
+                'key' => 'scheduler_stale',
+                'severity' => 'critical',
+                'message' => 'Scheduler heartbeat is missing or stale.',
+            ];
+        }
+
+        if (!data_get($status, 'clock.ok')) {
+            $findings[] = [
+                'key' => 'clock_skew',
+                'severity' => 'critical',
+                'message' => 'Application and database clocks are not synchronized.',
+            ];
+        }
+
+        if (data_get($status, 'cbms.enabled')) {
+            $failed = (int) data_get($status, 'cbms.failed', 0);
+            if ($failed > 0) {
+                $findings[] = [
+                    'key' => 'cbms_failed',
+                    'severity' => 'critical',
+                    'message' => "CBMS has {$failed} failed submission(s).",
+                ];
+            }
+
+            $oldest = data_get($status, 'cbms.oldest_outstanding_age_minutes');
+            $maxAge = (int) config('operations.monitoring.cbms_pending_max_minutes', 15);
+            if ($oldest !== null && $oldest > $maxAge) {
+                $findings[] = [
+                    'key' => 'cbms_pending',
+                    'severity' => 'warning',
+                    'message' => "Oldest unresolved CBMS submission is {$oldest} minutes old.",
+                ];
+            }
+        }
 
         $failedJobs = (int) data_get($status, 'queue.failed_jobs_count', 0);
         $failedJobThreshold = (int) config('operations.monitoring.failed_job_threshold', 1);
@@ -194,7 +238,7 @@ class SystemStatusService
         }
     }
 
-    private function migrationStatus(): array
+    public function migrationStatus(): array
     {
         try {
             if (!$this->hasTable('migrations')) {
@@ -232,6 +276,83 @@ class SystemStatusService
                 'error' => $e->getMessage(),
             ];
         }
+    }
+
+    public function schedulerStatus(): array
+    {
+        $lastSeen = Cache::get('operations.scheduler_last_seen');
+
+        try {
+            $lastSeen = $lastSeen ? Carbon::parse($lastSeen) : null;
+        } catch (Throwable) {
+            $lastSeen = null;
+        }
+
+        $age = $lastSeen ? (int) $lastSeen->diffInMinutes(now()) : null;
+        $maxAge = (int) config('operations.monitoring.scheduler_max_age_minutes', 3);
+
+        return [
+            'ok' => $age !== null && $age <= $maxAge,
+            'last_seen_at' => $lastSeen?->toIso8601String(),
+            'age_minutes' => $age,
+        ];
+    }
+
+    public function clockStatus(): array
+    {
+        try {
+            $databaseTime = (int) DB::selectOne('SELECT UNIX_TIMESTAMP() AS unix_time')->unix_time;
+            $skew = abs(time() - $databaseTime);
+
+            return [
+                'ok' => $skew <= (int) config('operations.monitoring.clock_max_skew_seconds', 5),
+                'skew_seconds' => $skew,
+                'timezone' => config('app.timezone'),
+            ];
+        } catch (Throwable $e) {
+            return ['ok' => false, 'skew_seconds' => null, 'timezone' => config('app.timezone'), 'error' => $e->getMessage()];
+        }
+    }
+
+    public function cbmsStatus(): array
+    {
+        if (!$this->hasTable('cbms_submissions') || !$this->hasTable('fiscal_credit_notes')) {
+            return [
+                'available' => false,
+                'enabled' => (bool) config('services.cbms.enabled'),
+                'acceptance_mode' => (bool) config('services.cbms.acceptance_mode'),
+                'configured' => false,
+                'invoices' => [],
+                'credit_notes' => [],
+                'outstanding' => 0,
+                'failed' => 0,
+                'oldest_outstanding_age_minutes' => null,
+            ];
+        }
+
+        $counts = fn (string $model) => $model::query()
+            ->selectRaw('status, COUNT(*) as aggregate')
+            ->groupBy('status')
+            ->pluck('aggregate', 'status')
+            ->map(fn ($count) => (int) $count)
+            ->all();
+        $invoices = $counts(CbmsSubmission::class);
+        $creditNotes = $counts(FiscalCreditNote::class);
+        $invoiceOldest = CbmsSubmission::where('status', '!=', 'submitted')->min('created_at');
+        $creditNoteOldest = FiscalCreditNote::where('status', '!=', 'submitted')->min('created_at');
+        $oldest = collect([$invoiceOldest, $creditNoteOldest])->filter()->min();
+
+        return [
+            'available' => true,
+            'enabled' => (bool) config('services.cbms.enabled'),
+            'acceptance_mode' => (bool) config('services.cbms.acceptance_mode'),
+            'configured' => filled(config('services.cbms.username')) && filled(config('services.cbms.password')),
+            'invoices' => $invoices,
+            'credit_notes' => $creditNotes,
+            'outstanding' => collect($invoices)->except('submitted')->sum() + collect($creditNotes)->except('submitted')->sum(),
+            'failed' => (int) ($invoices['failed'] ?? 0) + (int) ($creditNotes['failed'] ?? 0),
+            'oldest_outstanding_age_minutes' => $oldest ? (int) Carbon::parse($oldest)->diffInMinutes(now()) : null,
+        ];
     }
 
     private function storageStatus(): array

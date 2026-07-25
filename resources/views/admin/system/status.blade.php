@@ -30,7 +30,7 @@
         <div class="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
             <div>
                 <h1 class="text-2xl font-semibold text-gray-900">System Status</h1>
-                <p class="text-sm text-gray-600">Operational health for backups, queue, printing, storage, and realtime configuration.</p>
+                <p class="text-sm text-gray-600">Operational health for CBMS, backups, queue, scheduler, printing, storage, and realtime configuration.</p>
             </div>
             <div class="flex flex-wrap gap-2">
                 <a href="{{ route('admin.audit-events.index', ['severity' => 'warning', 'date_from' => now()->subDay()->toDateString()]) }}"
@@ -76,6 +76,8 @@
                     <div class="flex justify-between gap-4"><dt class="text-gray-500">Queue</dt><dd>{{ data_get($status, 'configuration.queue_driver') }}</dd></div>
                     <div class="flex justify-between gap-4"><dt class="text-gray-500">Broadcast</dt><dd>{{ data_get($status, 'configuration.broadcast_driver') }}</dd></div>
                     <div class="flex justify-between gap-4"><dt class="text-gray-500">Soketi</dt><dd>{{ data_get($status, 'soketi.configured') ? 'Configured' : 'Missing config' }}</dd></div>
+                    <div class="flex justify-between gap-4"><dt class="text-gray-500">Scheduler</dt><dd>{{ data_get($status, 'scheduler.ok') ? 'Running' : 'Stale' }}</dd></div>
+                    <div class="flex justify-between gap-4"><dt class="text-gray-500">Clock Skew</dt><dd>{{ data_get($status, 'clock.skew_seconds', 'Unknown') }}s</dd></div>
                 </dl>
             </section>
 
@@ -111,6 +113,18 @@
                 </dl>
             </section>
         </div>
+
+        <section class="p-4 bg-white border border-gray-200 rounded">
+            <h2 class="mb-3 text-base font-semibold text-gray-900">IRD CBMS</h2>
+            <div class="grid gap-3 text-sm md:grid-cols-6">
+                <div><dt class="text-gray-500">Delivery</dt><dd class="text-lg font-semibold">{{ data_get($status, 'cbms.enabled') ? 'Enabled' : 'Disabled' }}</dd></div>
+                <div><dt class="text-gray-500">Acceptance Mode</dt><dd class="text-lg font-semibold">{{ data_get($status, 'cbms.acceptance_mode') ? 'Enabled' : 'Disabled' }}</dd></div>
+                <div><dt class="text-gray-500">Credentials</dt><dd class="text-lg font-semibold">{{ data_get($status, 'cbms.configured') ? 'Configured' : 'Missing' }}</dd></div>
+                <div><dt class="text-gray-500">Outstanding</dt><dd class="text-lg font-semibold">{{ data_get($status, 'cbms.outstanding', 'Unknown') }}</dd></div>
+                <div><dt class="text-gray-500">Failed</dt><dd class="text-lg font-semibold">{{ data_get($status, 'cbms.failed', 'Unknown') }}</dd></div>
+                <div><dt class="text-gray-500">Oldest Outstanding</dt><dd class="text-lg font-semibold">{{ data_get($status, 'cbms.oldest_outstanding_age_minutes') === null ? 'None' : data_get($status, 'cbms.oldest_outstanding_age_minutes') . ' min' }}</dd></div>
+            </div>
+        </section>
 
         <section class="p-4 bg-white border border-gray-200 rounded">
             <h2 class="mb-3 text-base font-semibold text-gray-900">Printing</h2>

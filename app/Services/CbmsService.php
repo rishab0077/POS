@@ -24,7 +24,7 @@ class CbmsService
             ['payload' => $this->payload($snapshot)]
         );
 
-        if ($this->ready()) {
+        if ($this->automaticDeliveryReady()) {
             SubmitCbmsInvoice::dispatch($submission->id)->afterCommit();
         }
 
@@ -36,6 +36,11 @@ class CbmsService
         return (bool) config('services.cbms.enabled')
             && filled(config('services.cbms.username'))
             && filled(config('services.cbms.password'));
+    }
+
+    public function automaticDeliveryReady(): bool
+    {
+        return $this->ready() && !config('services.cbms.acceptance_mode');
     }
 
     public function issueCreditNote(
@@ -201,7 +206,7 @@ class CbmsService
             return $creditNote;
         });
 
-        if ($this->ready()) {
+        if ($this->automaticDeliveryReady()) {
             SubmitCbmsCreditNote::dispatch($creditNote->id)->afterCommit();
         }
 

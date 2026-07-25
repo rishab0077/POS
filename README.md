@@ -40,6 +40,23 @@ docker compose down
 
 Do not use the development credentials or example secrets in production. Configure a unique `APP_KEY`, database credentials, administrator password, business profile, allowed hosts, mail settings, backup storage, and realtime credentials for every restaurant installation.
 
+### Staff phones on the local network
+
+Give the server PC a fixed LAN address, connect it and all staff devices to the same private network, then set these values in `.env`:
+
+```dotenv
+APP_BIND_ADDRESS=0.0.0.0
+APP_URL=http://192.168.1.50:8097
+APP_HEALTH_HOST=192.168.1.50
+PUBLIC_APP_HOSTS=192.168.1.50,localhost
+PRIVATE_APP_HOSTS=192.168.1.50,localhost
+PRINT_SERVICE_HOSTS=192.168.1.50,localhost
+SESSION_SECURE_COOKIE=false
+SECURITY_HSTS_ENABLED=false
+```
+
+Replace `192.168.1.50` with the reserved server address, allow TCP port `8097` from the private LAN in the host firewall, and restart with `docker compose up -d`. Staff then open `http://192.168.1.50:8097`. Never forward this port from the internet or place the POS on guest Wi-Fi.
+
 ## Verification
 
 Run the automated test environment with:

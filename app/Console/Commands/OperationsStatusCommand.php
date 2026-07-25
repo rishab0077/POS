@@ -28,6 +28,11 @@ class OperationsStatusCommand extends Command
         $this->line('Migrations pending: ' . data_get($status, 'migrations.pending', 'unknown'));
         $this->line('Queue pending jobs: ' . data_get($status, 'queue.pending_jobs_count', 'unknown'));
         $this->line('Failed jobs: ' . data_get($status, 'queue.failed_jobs_count', 'unknown'));
+        $this->line('Scheduler heartbeat: ' . (data_get($status, 'scheduler.ok') ? 'ok' : 'stale'));
+        $this->line('Clock skew: ' . (data_get($status, 'clock.skew_seconds') ?? 'unknown') . ' seconds');
+        $this->line('CBMS outstanding: ' . data_get($status, 'cbms.outstanding', 'unknown'));
+        $this->line('CBMS failed: ' . data_get($status, 'cbms.failed', 'unknown'));
+        $this->line('CBMS acceptance mode: ' . (data_get($status, 'cbms.acceptance_mode') ? 'enabled' : 'disabled'));
         $this->line('Storage writable: ' . (data_get($status, 'storage.writable') ? 'yes' : 'no'));
         $this->line('Latest backup: ' . (data_get($status, 'backup.latest.file') ?: 'none'));
         $this->line('Print stations offline: ' . data_get($status, 'printing.offline_stations', 0));

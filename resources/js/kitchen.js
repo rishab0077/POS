@@ -3,13 +3,19 @@ import Pusher from "pusher-js";
 
 window.Pusher = Pusher;
 
-window.Echo = new Echo({
-    broadcaster: "pusher",
-    key: import.meta.env.VITE_PUSHER_APP_KEY,
-    cluster: import.meta.env.VITE_PUSHER_APP_CLUSTER || "mt1",
-    wsHost: import.meta.env.VITE_PUSHER_HOST || window.location.hostname,
-    wsPort: Number(import.meta.env.VITE_PUSHER_PORT || 80),
-    wssPort: Number(import.meta.env.VITE_PUSHER_PORT || 443),
-    forceTLS: (import.meta.env.VITE_PUSHER_SCHEME || window.location.protocol.replace(":", "")) === "https",
-    enabledTransports: ["ws", "wss"],
-});
+const key = document.querySelector('meta[name="realtime-key"]')?.content;
+
+if (key) {
+    const port = Number(window.location.port || (window.location.protocol === "https:" ? 443 : 80));
+
+    window.Echo = new Echo({
+        broadcaster: "pusher",
+        key,
+        cluster: "mt1",
+        wsHost: window.location.hostname,
+        wsPort: port,
+        wssPort: port,
+        forceTLS: window.location.protocol === "https:",
+        enabledTransports: ["ws", "wss"],
+    });
+}

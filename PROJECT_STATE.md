@@ -1,6 +1,6 @@
 # Restaurant POS — Living Project State
 
-Last updated: 2026-07-18
+Last updated: 2026-07-25
 
 This file is the shared handoff for the project. Every agent or chat that changes the repository must update it in the same task, as required by `AGENTS.md`.
 
@@ -21,7 +21,7 @@ This file is the shared handoff for the project. Every agent or chat that change
 - Production images exclude Node.js and npm.
 - `npm ci` and the production frontend build complete with zero reported npm vulnerabilities.
 - Production uses the database queue; the test profile uses the synchronous queue.
-- Automated verification currently passes: **124 tests, 646 assertions**.
+- Automated verification currently passes: **129 tests, 688 assertions**.
 
 ## Completed work
 
@@ -198,9 +198,73 @@ Key files:
 - `routes/inventory.php`
 - `tests/Feature/ReturnedInventoryTest.php`
 
+### IRD compliance — Phase 7A: production readiness
+
+- Added a read-only `php artisan cbms:preflight` command that fails closed when live-acceptance prerequisites are missing.
+- The preflight validates the legal restaurant name and address, nine-digit seller PAN, official HTTPS CBMS endpoint, credential presence, asynchronous queue, current migrations, scheduler heartbeat, application/database clock agreement, CBMS outbox availability, zero unresolved pre-activation records, Nepal timezone, and disabled debug mode.
+- The command reports whether CBMS delivery is enabled but never contacts IRD or exposes credential values.
+- The scheduler now writes a shared heartbeat every minute. Operations status reports heartbeat freshness, database clock skew, CBMS configuration, outstanding/failed counts, and oldest unresolved age.
+- The existing operations alert path now reports stale schedulers, clock disagreement, failed CBMS deliveries, and aged unresolved CBMS submissions without adding a second monitoring system.
+- Added configurable scheduler, clock-skew, and CBMS-age thresholds to both environment examples.
+- Added a credential-safe deployment, rotation, rollback, and Phase 7B handoff runbook.
+- Automated coverage verifies the default failure state, a fully configured pre-activation state, status visibility, and CBMS alert routing.
+
+Key files:
+
+- `routes/console.php`
+- `tests/Feature/CbmsPreflightTest.php`
+- `app/Console/Kernel.php`
+- `app/Services/Operations/SystemStatusService.php`
+- `app/Console/Commands/OperationsStatusCommand.php`
+- `resources/views/admin/system/status.blade.php`
+- `config/operations.php`
+- `tests/Feature/OperationsPhaseThreeATest.php`
+- `docs/CBMS_GO_LIVE.md`
+
+### IRD compliance — Phase 7B: controlled acceptance tooling
+
+- Added an opt-in acceptance mode that suppresses every automatic CBMS delivery path: invoice and credit-note queue dispatch, stale queued jobs, scheduler recovery, and dashboard retries.
+- Added `php artisan cbms:accept {invoice|credit-note} {id} --confirm="SEND TO IRD"` for one synchronous, explicitly confirmed live request.
+- The acceptance command fails closed unless acceptance mode is active, credentials are configured, the official IRD host is selected, the target is unresolved, and it is the only unresolved CBMS record across both outboxes.
+- A live acceptance requires IRD response `200`; sales response `101` is deliberately not treated as a clean acceptance result.
+- Operations status and preflight show acceptance-mode state without exposing credentials.
+- The go-live runbook now covers one controlled invoice, one controlled return, and manual verification in the IRD Sales Register Sync report before any automatic delivery is enabled.
+- All HTTP interactions in automated tests are mocked. No live IRD request was made during implementation or verification.
+
+Key files:
+
+- `config/services.php`
+- `app/Services/CbmsService.php`
+- `app/Jobs/SubmitCbmsInvoice.php`
+- `app/Jobs/SubmitCbmsCreditNote.php`
+- `app/Console/Kernel.php`
+- `routes/console.php`
+- `app/Http/Controllers/Admin/CbmsSubmissionController.php`
+- `app/Services/Operations/SystemStatusService.php`
+- `docs/CBMS_GO_LIVE.md`
+- `tests/Feature/CbmsAcceptanceTest.php`
+
+### Local staff LAN deployment
+
+- The web port remains bound to localhost by default and can be explicitly exposed to a trusted restaurant LAN with `APP_BIND_ADDRESS=0.0.0.0`.
+- Kitchen realtime clients now use the current browser origin at runtime, so one production build works from localhost, a reserved LAN IP, or a future HTTPS hostname.
+- Backend broadcasts use the Docker-internal `soketi:6001` service instead of incorrectly routing back through the host.
+- The README documents the required fixed server address, host allowlists, HTTP session settings, firewall scope, and staff-phone URL.
+- LAN access must remain restricted to a private staff network; the POS port must never be forwarded from the internet.
+
+Key files:
+
+- `docker-compose.yml`
+- `.env.docker.example`
+- `.env.production.example`
+- `resources/js/kitchen.js`
+- `resources/views/layouts/kitchen.blade.php`
+- `README.md`
+- `tests/Feature/LanDeploymentTest.php`
+
 ## Current readiness
 
-The core POS and the local CBMS sales-bill and partial/full credit-note outboxes are working and covered by automated tests. Internal receivable reversal, payment-refund records, net reporting, and waste-by-default returned-item handling are implemented. The application is **not yet approved for live IRD CBMS use** because no taxpayer CBMS credentials or IRD test environment credentials have been supplied, and no live acceptance test has been performed.
+The core POS and the local CBMS sales-bill and partial/full credit-note outboxes are working and covered by automated tests. Internal receivable reversal, payment-refund records, net reporting, and waste-by-default returned-item handling are implemented. Phase 7A production-readiness and Phase 7B controlled-acceptance tooling are complete. Explicit private-LAN binding and same-origin kitchen realtime support are ready for deployment testing. The live Phase 7B acceptance exercise still requires taxpayer credentials, IRD coordination, and operator verification in the IRD portal. The application is **not yet approved for live IRD CBMS use**, and no live acceptance test has been performed.
 
 CBMS remains off with `CBMS_ENABLED=false`. This allows normal local use and records finalized invoices as pending submissions without contacting IRD.
 
@@ -209,9 +273,11 @@ CBMS remains off with `CBMS_ENABLED=false`. This allows normal local use and rec
 1. Enter the restaurant's real legal name, address, and nine-digit PAN/VAT registration in the restaurant settings or production environment.
 2. Obtain the taxpayer CBMS username and password from IRD and place them only in the deployment `.env`.
 3. Confirm with IRD that the mapped fiscal-year format and numeric invoice sequence are accepted for this installation.
-4. Run the database migrations and deploy the rebuilt app, queue, and scheduler images.
-5. Test a controlled invoice against IRD, verify response `200`, and confirm it in the CBMS External Portal Sales Register Sync report.
-6. Set `CBMS_ENABLED=true` only after the controlled test is approved.
+4. Run the database migrations, deploy the rebuilt app, queue, and scheduler images, and run `php artisan cbms:preflight` with CBMS still disabled.
+5. Enable `CBMS_ENABLED=true` and `CBMS_ACCEPTANCE_MODE=true`, then rerun preflight and resolve every failure.
+6. Create exactly one controlled invoice, send it with `cbms:accept`, require response `200`, and confirm it in the CBMS External Portal Sales Register Sync report.
+7. Issue exactly one controlled return for that accepted invoice, send it with `cbms:accept`, require response `200`, and confirm the return in the portal.
+8. Keep acceptance mode enabled until both records are approved and Phase 7C automatic-delivery activation is authorized.
 
 ## Known limits and next compliance work
 
@@ -241,6 +307,21 @@ CBMS remains off with `CBMS_ENABLED=false`. This allows normal local use and rec
 - 2026-07-18: returned-inventory focused suite — 8 passed, 66 assertions.
 - 2026-07-18: complete regression suite after returned-inventory handling — 124 passed, 646 assertions.
 - 2026-07-18: production Vite build succeeded during the returned-inventory Docker image build.
+- 2026-07-18: Phase 6 returned-inventory verification rerun — 1 passed, 16 assertions.
+- 2026-07-18: Phase 7 CBMS preflight focused test — 1 passed, 6 assertions.
+- 2026-07-18: complete regression suite after starting Phase 7 — 125 passed, 652 assertions.
+- 2026-07-18: production Vite build succeeded during the Phase 7 Docker test-image rebuild.
+- 2026-07-18: current safe configuration preflight failed closed as intended; legal name, PAN, CBMS credentials, and asynchronous queue remain unconfigured, and CBMS remains disabled.
+- 2026-07-18: Phase 7A focused preflight and operations suite — 9 passed, 40 assertions.
+- 2026-07-18: Laravel schedule inspection confirmed the one-minute `operations:scheduler-heartbeat`; CBMS dispatch remained absent while CBMS was disabled.
+- 2026-07-18: complete regression suite after Phase 7A — 126 passed, 662 assertions, including CBMS credential non-disclosure on the operations dashboard.
+- 2026-07-18: production Vite build succeeded during the Phase 7A Docker test-image rebuild.
+- 2026-07-18: Phase 7B focused CBMS acceptance and regression suite — 12 passed, 90 assertions; all HTTP calls were mocked.
+- 2026-07-18: complete regression suite after Phase 7B tooling — 128 passed, 679 assertions.
+- 2026-07-18: production Vite build succeeded during the Phase 7B Docker test-image rebuild.
+- 2026-07-25: LAN binding and same-origin realtime focused check — 1 passed, 9 assertions.
+- 2026-07-25: complete regression suite after LAN deployment support — 129 passed, 688 assertions.
+- 2026-07-25: production Vite build succeeded during the LAN deployment Docker test-image rebuild.
 
 ## Change log
 
@@ -263,3 +344,11 @@ CBMS remains off with `CBMS_ENABLED=false`. This allows normal local use and rec
 - Updated credit-note issuance, dashboard, printing, credit balances, daily summaries, item reports, and category reports for partial/full returns.
 - Added focused partial-credit-return and net-reporting regression coverage and verified the complete suite.
 - Added sale-time ingredient-consumption snapshots, waste-by-default returns, explicit one-time reusable-stock restoration, inventory movements, audit logging, and regression coverage.
+- Confirmed Phase 6 with focused and complete regression verification.
+- Started Phase 7 with a fail-closed, no-network CBMS production preflight command and focused regression coverage.
+- Completed Phase 7A with migration, scheduler, database-clock, and clean-outbox preflight gates; shared operations status and alerts; environment thresholds; and the CBMS go-live runbook.
+- Implemented Phase 7B acceptance mode, automatic-delivery suppression, an exactly-one-record confirmed acceptance command, operations visibility, runbook steps, and mocked safety coverage. Live taxpayer acceptance remains pending external credentials and IRD coordination.
+
+### 2026-07-25
+
+- Added explicit private-LAN binding, runtime same-origin kitchen WebSockets, correct Docker-internal Soketi routing, staff-phone setup documentation, and focused regression coverage.
