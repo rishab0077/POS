@@ -18,10 +18,10 @@ This file is the shared handoff for the project. Every agent or chat that change
 - Database: MySQL 8.
 - Frontend: Vite 8, Tailwind CSS 3, Alpine.js, Axios, Chart.js, Laravel Echo, Flatpickr, Pusher JS, and SortableJS.
 - Runtime: Docker Compose services for PHP-FPM, Nginx, MySQL, Soketi, the database queue worker, and the scheduler.
-- Production images exclude Node.js and npm.
+- Production images exclude Node.js and npm and include the MariaDB backup client and MySQL 8 authentication connector required by `backup:database`.
 - `npm ci` and the production frontend build complete with zero reported npm vulnerabilities.
 - Production uses the database queue; the test profile uses the synchronous queue.
-- Automated verification currently passes: **129 tests, 688 assertions**.
+- Automated verification currently passes: **130 tests, 689 assertions**.
 
 ## Completed work
 
@@ -251,6 +251,7 @@ Key files:
 - Backend broadcasts use the Docker-internal `soketi:6001` service instead of incorrectly routing back through the host.
 - The README documents the required fixed server address, host allowlists, HTTP session settings, firewall scope, and staff-phone URL.
 - LAN access must remain restricted to a private staff network; the POS port must never be forwarded from the internet.
+- The production Compose stack has been built, migrated, seeded, and smoke-tested locally on `127.0.0.1:8097`; all six runtime services started successfully.
 
 Key files:
 
@@ -264,7 +265,7 @@ Key files:
 
 ## Current readiness
 
-The core POS and the local CBMS sales-bill and partial/full credit-note outboxes are working and covered by automated tests. Internal receivable reversal, payment-refund records, net reporting, and waste-by-default returned-item handling are implemented. Phase 7A production-readiness and Phase 7B controlled-acceptance tooling are complete. Explicit private-LAN binding and same-origin kitchen realtime support are ready for deployment testing. The live Phase 7B acceptance exercise still requires taxpayer credentials, IRD coordination, and operator verification in the IRD portal. The application is **not yet approved for live IRD CBMS use**, and no live acceptance test has been performed.
+The core POS and the local CBMS sales-bill and partial/full credit-note outboxes are working and covered by automated tests. Internal receivable reversal, payment-refund records, net reporting, and waste-by-default returned-item handling are implemented. Phase 7A production-readiness and Phase 7B controlled-acceptance tooling are complete. The localhost production deployment and same-origin kitchen realtime configuration have passed Docker smoke testing; staff-phone LAN testing still requires an explicit private-LAN bind on the target restaurant PC. The live Phase 7B acceptance exercise still requires taxpayer credentials, IRD coordination, and operator verification in the IRD portal. The application is **not yet approved for live IRD CBMS use**, and no live acceptance test has been performed.
 
 CBMS remains off with `CBMS_ENABLED=false`. This allows normal local use and records finalized invoices as pending submissions without contacting IRD.
 
@@ -322,6 +323,12 @@ CBMS remains off with `CBMS_ENABLED=false`. This allows normal local use and rec
 - 2026-07-25: LAN binding and same-origin realtime focused check — 1 passed, 9 assertions.
 - 2026-07-25: complete regression suite after LAN deployment support — 129 passed, 688 assertions.
 - 2026-07-25: production Vite build succeeded during the LAN deployment Docker test-image rebuild.
+- 2026-07-25: production database backup completed and passed gzip and file-integrity validation before local migration.
+- 2026-07-25: production Compose deployment completed all migrations and base seeding; app, Nginx, MySQL, queue, scheduler, and Soketi services started successfully.
+- 2026-07-25: localhost smoke checks passed — Nginx and MySQL healthy, `/health` and `/login` returned HTTP 200, and `operations:status` reported zero pending migrations, jobs, or failed jobs.
+- 2026-07-25: production backup-client focused suite — 9 passed, 33 assertions.
+- 2026-07-25: complete regression suite after the production backup-client fix — 130 passed, 689 assertions.
+- 2026-07-25: production and test Docker images, including the Vite frontend build, rebuilt successfully.
 
 ## Change log
 
@@ -352,3 +359,5 @@ CBMS remains off with `CBMS_ENABLED=false`. This allows normal local use and rec
 ### 2026-07-25
 
 - Added explicit private-LAN binding, runtime same-origin kitchen WebSockets, correct Docker-internal Soketi routing, staff-phone setup documentation, and focused regression coverage.
+- Added the MariaDB dump client and MySQL 8 authentication connector to the production image, restoring the pre-migration database-backup workflow and covering the runtime package requirement with a regression test.
+- Deployed and smoke-tested the production Compose stack locally on port 8097 after creating and validating a database backup.

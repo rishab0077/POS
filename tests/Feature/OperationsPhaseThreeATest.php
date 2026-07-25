@@ -60,6 +60,14 @@ class OperationsPhaseThreeATest extends TestCase
             ->assertExitCode(1);
     }
 
+    public function test_production_image_includes_the_database_backup_client(): void
+    {
+        $this->assertStringContainsString(
+            'RUN apk add --no-cache mariadb-client mariadb-connector-c',
+            file_get_contents(base_path('Dockerfile'))
+        );
+    }
+
     public function test_backup_retention_dry_run_does_not_delete_files(): void
     {
         $directory = storage_path('framework/testing/backups-retention');
