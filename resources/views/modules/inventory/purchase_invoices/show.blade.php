@@ -59,10 +59,10 @@
                                 <tr>
                                     <td class="px-3 py-2 text-sm font-medium">{{ $item->item_name }}</td>
                                     <td class="px-3 py-2 text-sm text-right">{{ number_format($item->quantity, 3) }} {{ $item->unit }}</td>
-                                    <td class="px-3 py-2 text-sm text-right">Rs {{ number_format($item->unit_price, 2) }}</td>
-                                    <td class="px-3 py-2 text-sm text-right">Rs {{ number_format($item->discount_amount, 2) }}</td>
-                                    <td class="px-3 py-2 text-sm text-right">Rs {{ number_format($item->vat_amount, 2) }}</td>
-                                    <td class="px-3 py-2 text-sm text-right font-semibold">Rs {{ number_format($item->total_amount, 2) }}</td>
+                                    <td class="px-3 py-2 text-sm text-right">NPR {{ number_format($item->unit_price, 2) }}</td>
+                                    <td class="px-3 py-2 text-sm text-right">NPR {{ number_format($item->discount_amount, 2) }}</td>
+                                    <td class="px-3 py-2 text-sm text-right">NPR {{ number_format($item->vat_amount, 2) }}</td>
+                                    <td class="px-3 py-2 text-sm text-right font-semibold">NPR {{ number_format($item->total_amount, 2) }}</td>
                                 </tr>
                             @endforeach
                         </tbody>
@@ -73,13 +73,13 @@
             <div class="bg-white rounded shadow p-5">
                 <h2 class="font-semibold mb-3">Totals</h2>
                 <div class="space-y-2 text-sm">
-                    <div class="flex justify-between"><span>Subtotal</span><strong>Rs {{ number_format($purchaseInvoice->subtotal, 2) }}</strong></div>
-                    <div class="flex justify-between"><span>Discount</span><strong>Rs {{ number_format($purchaseInvoice->discount_amount, 2) }}</strong></div>
-                    <div class="flex justify-between"><span>Taxable</span><strong>Rs {{ number_format($purchaseInvoice->taxable_amount, 2) }}</strong></div>
-                    <div class="flex justify-between"><span>VAT</span><strong>Rs {{ number_format($purchaseInvoice->vat_amount, 2) }}</strong></div>
-                    <div class="flex justify-between border-t pt-2 text-lg"><span>Total</span><strong>Rs {{ number_format($purchaseInvoice->total_amount, 2) }}</strong></div>
-                    <div class="flex justify-between"><span>Paid</span><strong>Rs {{ number_format($purchaseInvoice->paid_amount, 2) }}</strong></div>
-                    <div class="flex justify-between"><span>Balance</span><strong>Rs {{ number_format($purchaseInvoice->balance_amount, 2) }}</strong></div>
+                    <div class="flex justify-between"><span>Subtotal</span><strong>NPR {{ number_format($purchaseInvoice->subtotal, 2) }}</strong></div>
+                    <div class="flex justify-between"><span>Discount</span><strong>NPR {{ number_format($purchaseInvoice->discount_amount, 2) }}</strong></div>
+                    <div class="flex justify-between"><span>Taxable</span><strong>NPR {{ number_format($purchaseInvoice->taxable_amount, 2) }}</strong></div>
+                    <div class="flex justify-between"><span>VAT</span><strong>NPR {{ number_format($purchaseInvoice->vat_amount, 2) }}</strong></div>
+                    <div class="flex justify-between border-t pt-2 text-lg"><span>Total</span><strong>NPR {{ number_format($purchaseInvoice->total_amount, 2) }}</strong></div>
+                    <div class="flex justify-between"><span>Paid</span><strong>NPR {{ number_format($purchaseInvoice->paid_amount, 2) }}</strong></div>
+                    <div class="flex justify-between"><span>Balance</span><strong>NPR {{ number_format($purchaseInvoice->balance_amount, 2) }}</strong></div>
                 </div>
 
                 @if ($purchaseInvoice->attachment_path)
@@ -130,7 +130,7 @@
                                 <td class="px-3 py-2 text-sm">{{ optional($payment->payment_date)->format('Y-m-d') }}</td>
                                 <td class="px-3 py-2 text-sm">{{ config('pos.purchase_payments')[$payment->payment_method] ?? $payment->payment_method }}</td>
                                 <td class="px-3 py-2 text-sm">{{ $payment->createdBy->name ?? '-' }}</td>
-                                <td class="px-3 py-2 text-sm text-right font-semibold">Rs {{ number_format($payment->amount, 2) }}</td>
+                                <td class="px-3 py-2 text-sm text-right font-semibold">NPR {{ number_format($payment->amount, 2) }}</td>
                             </tr>
                         @empty
                             <tr>

@@ -205,13 +205,23 @@ class BillPrinter
         $this->printer->setEmphasis(true);
         $this->amountLine('Grand Total', $this->billDetails->grand_total);
         $this->printer->setEmphasis(false);
-        $this->detailLine(
-            'Payment Method',
-            config(
-                'pos.payments.' . $this->billDetails->payment_method,
-                $this->billDetails->payment_method ?: '-'
-            )
-        );
+        if ($this->billDetails->payments->isEmpty()) {
+            $this->detailLine(
+                'Payment Method',
+                config('pos.payments.' . $this->billDetails->payment_method, $this->billDetails->payment_method ?: '-')
+            );
+        } else {
+            foreach ($this->billDetails->payments as $payment) {
+                $this->amountLine(
+                    config('pos.payments.' . $payment->payment_method, ucfirst($payment->payment_method)),
+                    $payment->amount
+                );
+
+                if ($payment->reference_no) {
+                    $this->detailLine('Reference', $payment->reference_no);
+                }
+            }
+        }
         $this->printDash();
     }
 

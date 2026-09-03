@@ -74,7 +74,7 @@ class BillController extends Controller
     public function viewBill($id)
     {
         $bill = Bill::withTrashed()
-            ->with(['table', 'sourceTable', 'orders.orderDetails.menu'])
+            ->with(['table', 'sourceTable', 'payments.recordedBy', 'orders.orderDetails.menu'])
             ->findOrFail($id);
 
         return view('admin.bills.view', compact('bill'));
@@ -110,7 +110,7 @@ class BillController extends Controller
 
     public function previewBill($id)
     {
-        $bill = Bill::with(['table', 'sourceTable', 'orders.orderDetails.menu'])
+        $bill = Bill::with(['table', 'sourceTable', 'payments', 'orders.orderDetails.menu'])
             ->findOrFail($id);
 
         if (!$bill->isLocked()) {

@@ -36,12 +36,26 @@
                     </div>
                     <div class="w-full sm:w-1/2 lg:w-1/4 p-3">
                         <span class="block text-sm font-medium text-gray-500">Grand Total</span>
-                        <p class="mt-1 text-md text-gray-900 font-bold">Rs {{ number_format($bill->grand_total, 2) }}
+                        <p class="mt-1 text-md text-gray-900 font-bold">NPR {{ number_format($bill->grand_total, 2) }}
                         </p>
                     </div>
                     <div class="w-full sm:w-1/2 lg:w-1/4 p-3">
                         <span class="block text-sm font-medium text-gray-500">VAT Amount</span>
-                        <p class="mt-1 text-md text-gray-900">Rs {{ number_format($bill->vat_amount, 2) }}</p>
+                        <p class="mt-1 text-md text-gray-900">NPR {{ number_format($bill->vat_amount, 2) }}</p>
+                    </div>
+                    <div class="w-full sm:w-1/2 lg:w-1/2 p-3">
+                        <span class="block text-sm font-medium text-gray-500">Payment</span>
+                        @forelse ($bill->payments as $payment)
+                            <p class="mt-1 text-md text-gray-900">
+                                {{ config('pos.payments.' . $payment->payment_method, ucfirst($payment->payment_method)) }}
+                                — NPR {{ number_format($payment->amount, 2) }}
+                                @if ($payment->reference_no)
+                                    <span class="text-sm text-gray-500">({{ $payment->reference_no }})</span>
+                                @endif
+                            </p>
+                        @empty
+                            <p class="mt-1 text-md text-gray-900">{{ config('pos.payments.' . $bill->payment_method, ucfirst($bill->payment_method ?: '-')) }}</p>
+                        @endforelse
                     </div>
                     <div class="w-full sm:w-1/2 lg:w-1/4 p-3">
                         <span class="block text-sm font-medium text-gray-500">Order Type</span>

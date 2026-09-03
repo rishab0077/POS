@@ -22,9 +22,9 @@
 
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div class="bg-white border rounded p-4"><div class="text-xs uppercase text-gray-500">Discounted Bills</div><strong class="text-xl">{{ $report['totals']['bill_count'] }}</strong></div>
-            <div class="bg-white border rounded p-4"><div class="text-xs uppercase text-gray-500">Total Discount</div><strong class="text-xl">Rs {{ number_format($report['totals']['discount_amount'], 2) }}</strong></div>
-            <div class="bg-white border rounded p-4"><div class="text-xs uppercase text-gray-500">Before Discount</div><strong class="text-xl">Rs {{ number_format($report['totals']['sales_before_discount'], 2) }}</strong></div>
-            <div class="bg-white border rounded p-4"><div class="text-xs uppercase text-gray-500">Final Invoice Total</div><strong class="text-xl">Rs {{ number_format($report['totals']['sales_after_discount'], 2) }}</strong></div>
+            <div class="bg-white border rounded p-4"><div class="text-xs uppercase text-gray-500">Total Discount</div><strong class="text-xl">NPR {{ number_format($report['totals']['discount_amount'], 2) }}</strong></div>
+            <div class="bg-white border rounded p-4"><div class="text-xs uppercase text-gray-500">Before Discount</div><strong class="text-xl">NPR {{ number_format($report['totals']['sales_before_discount'], 2) }}</strong></div>
+            <div class="bg-white border rounded p-4"><div class="text-xs uppercase text-gray-500">Final Invoice Total</div><strong class="text-xl">NPR {{ number_format($report['totals']['sales_after_discount'], 2) }}</strong></div>
         </div>
 
         <section class="bg-white border rounded overflow-x-auto">
@@ -33,7 +33,7 @@
                 <thead class="bg-gray-100"><tr><th class="p-3 text-left">Reason</th><th class="p-3 text-right">Bills</th><th class="p-3 text-right">Discount</th></tr></thead>
                 <tbody>
                     @forelse ($report['by_reason'] as $reason)
-                        <tr class="border-t"><td class="p-3">{{ $reason['label'] }}</td><td class="p-3 text-right">{{ $reason['count'] }}</td><td class="p-3 text-right font-semibold">Rs {{ number_format($reason['amount'], 2) }}</td></tr>
+                        <tr class="border-t"><td class="p-3">{{ $reason['label'] }}</td><td class="p-3 text-right">{{ $reason['count'] }}</td><td class="p-3 text-right font-semibold">NPR {{ number_format($reason['amount'], 2) }}</td></tr>
                     @empty
                         <tr><td colspan="3" class="p-4 text-center text-gray-500">No discounts in this period.</td></tr>
                     @endforelse
@@ -64,7 +64,7 @@
                             <td class="p-3">{{ $bill->discount_type === 'percentage' ? number_format($bill->discount_value, 2) . '%' : 'Amount' }}</td>
                             <td class="p-3">{{ config('pos.discount_reasons.' . $bill->discount_reason, ucfirst(str_replace('_', ' ', $bill->discount_reason ?: 'Unrecorded'))) }}</td>
                             <td class="p-3">{{ $bill->discountApprover?->name ?? '-' }}</td>
-                            <td class="p-3 text-right font-semibold">Rs {{ number_format($bill->discount, 2) }}</td>
+                            <td class="p-3 text-right font-semibold">NPR {{ number_format($bill->discount, 2) }}</td>
                         </tr>
                     @empty
                         <tr><td colspan="7" class="p-4 text-center text-gray-500">No discounted bills in this period.</td></tr>

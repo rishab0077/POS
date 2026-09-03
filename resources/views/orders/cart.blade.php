@@ -40,7 +40,7 @@
             </div>
 
             <div class="mt-4">
-                <p class="text-lg font-semibold">Total: Rs {{ $cart['total'] ? $cart['total'] : 0 }}</p>
+                <p class="text-lg font-semibold">Total: NPR {{ $cart['total'] ? $cart['total'] : 0 }}</p>
             </div>
             <br>
             <div class="form-group mb-4">

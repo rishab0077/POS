@@ -27,7 +27,7 @@
                             <option value="">General supplier payment</option>
                             @foreach ($purchaseInvoices as $invoice)
                                 <option value="{{ $invoice->id }}" data-supplier="{{ $invoice->supplier_id }}" @selected(old('purchase_invoice_id', request('purchase_invoice_id')) == $invoice->id)>
-                                    {{ $invoice->supplier->name }} - {{ $invoice->invoice_no }} (Rs {{ number_format($invoice->balance_amount, 2) }})
+                                    {{ $invoice->supplier->name }} - {{ $invoice->invoice_no }} (NPR {{ number_format($invoice->balance_amount, 2) }})
                                 </option>
                             @endforeach
                         </select>

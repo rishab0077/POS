@@ -65,7 +65,7 @@ COPY --from=build /var/www/html/public /var/www/html/public
 
 FROM php-base AS runtime
 
-RUN apk add --no-cache mariadb-client mariadb-connector-c
+RUN apk add --no-cache mariadb-client mariadb-connector-c su-exec
 
 COPY . .
 COPY --from=build /var/www/html/vendor ./vendor

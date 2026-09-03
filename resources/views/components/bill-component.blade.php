@@ -24,7 +24,7 @@
         @endif
     </td>
     <td class="px-6 py-4 text-sm font-semibold text-gray-900">
-        Rs {{ number_format($bill->grand_total, 2) }}
+        NPR {{ number_format($bill->grand_total, 2) }}
     </td>
     <td class="px-6 py-4 text-right">
         <div class="flex items-center justify-end space-x-4">

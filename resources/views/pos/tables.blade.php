@@ -48,7 +48,7 @@
                                 <div class="text-center">
                                     <h2 class="text-3xl font-bold tracking-wider">{{ $table->name }}</h2>
                                     @if ($table->order_sum)
-                                        <p id="tableTotal" class="text-lg font-semibold mt-1">Rs {{ $table->order_sum }}
+                                        <p id="tableTotal" class="text-lg font-semibold mt-1">NPR {{ $table->order_sum }}
                                         </p>
                                     @else
                                         <p id="tableTotal" class="text-lg font-semibold mt-1"></p> {{-- Ensure element exists for clearing --}}
@@ -59,34 +59,34 @@
                                 <div class="table-options bottom-3 left-0 right-0 flex justify-center gap-2">
                                     <div id="showOrdersBtn">
                                         <button onclick="event.stopPropagation(); handleTablePreview({{ $table->id }})"
-                                            class="action-btn" title="View orders">
+                                            class="action-btn" title="View orders" aria-label="View orders">
                                             <i class="fas fa-eye"></i>
                                         </button>
                                     </div>
                                     @if (auth()->user()->canTransferTables())
                                         <div id="transferTableBtn">
                                             <button onclick="event.stopPropagation(); triggerTransferModal({{ $table->id }})"
-                                                class="action-btn" title="Transfer or merge table">
+                                                class="action-btn" title="Transfer or merge table" aria-label="Transfer or merge table">
                                                 <i class="fas fa-exchange-alt"></i>
                                             </button>
                                         </div>
                                     @endif
                                     <div id="printTableBtn">
                                         <button onclick="event.stopPropagation(); triggerSummaryBill({{ $table->id }})"
-                                            class="action-btn" title="Print summary">
+                                            class="action-btn" title="Print summary" aria-label="Print summary">
                                             <i class="fas fa-receipt"></i>
                                         </button>
                                     </div>
                                     <div id="finalBillBtn">
                                         <button onclick="event.stopPropagation(); triggerFinalBillModal({{ $table->id }})"
-                                            class="action-btn" title="Print final bill">
+                                            class="action-btn" title="Print final bill" aria-label="Print final bill">
                                             <i class="fas fa-print"></i>
                                         </button>
                                     </div>
                                     <div id="settleTableBtn">
                                         <button
                                             onclick="event.stopPropagation(); triggerPaymentModal({{ $table->id }})"
-                                            class="action-btn">
+                                            class="action-btn" title="Close table" aria-label="Close table">
                                             <i class="fas fa-dollar-sign"></i>
                                         </button>
                                     </div>
@@ -98,13 +98,13 @@
             @endforeach
         </div>
 
-        <div id="paymentModal" class="modal fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50"
+        <div id="paymentModal" class="modal fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black bg-opacity-50 p-2 sm:items-center"
             style="display: none;">
             <div class="modal-overlay fixed inset-0" data-close="paymentModal"></div>
-            <div class="modal-container bg-white rounded-xl shadow-2xl w-full max-w-sm p-6 m-4 relative">
+            <div class="modal-container relative m-2 max-h-[calc(100vh-1rem)] w-full max-w-sm overflow-y-auto rounded-xl bg-white p-4 shadow-2xl sm:p-6">
                 <div class="modal-header flex justify-between items-center mb-4">
                     <h3 class="text-xl font-semibold text-gray-800">Close Table</h3>
-                    <button data-close="paymentModal" class="text-gray-400 hover:text-gray-600">&times;</button>
+                    <button data-close="paymentModal" class="text-gray-400 hover:text-gray-600" aria-label="Close dialog">&times;</button>
                 </div>
                 <div class="modal-body space-y-3 text-sm text-gray-700">
                     <input type="hidden" id="paymentTableId" value="0">
@@ -120,13 +120,13 @@
             </div>
         </div>
 
-        <div id="summaryBillModal" class="modal fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50"
+        <div id="summaryBillModal" class="modal fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black bg-opacity-50 p-2 sm:items-center"
             style="display: none;">
             <div class="modal-overlay fixed inset-0" data-close="summaryBillModal"></div>
-            <div class="modal-container bg-white rounded-xl shadow-2xl w-full max-w-sm p-6 m-4 relative">
+            <div class="modal-container relative m-2 max-h-[calc(100vh-1rem)] w-full max-w-sm overflow-y-auto rounded-xl bg-white p-4 shadow-2xl sm:p-6">
                 <div class="modal-header flex justify-between items-center mb-4">
                     <h3 class="text-xl font-semibold text-gray-800">Summary Bill</h3>
-                    <button data-close="summaryBillModal" class="text-gray-400 hover:text-gray-600">&times;</button>
+                    <button data-close="summaryBillModal" class="text-gray-400 hover:text-gray-600" aria-label="Close dialog">&times;</button>
                 </div>
                 <div class="modal-body space-y-3">
                     <input type="hidden" id="summaryBillTableId" value="0">
@@ -146,13 +146,13 @@
         </div>
 
         @if (auth()->user()->canTransferTables())
-            <div id="transferTableModal" class="modal fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50"
+            <div id="transferTableModal" class="modal fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black bg-opacity-50 p-2 sm:items-center"
                 style="display: none;">
                 <div class="modal-overlay fixed inset-0" data-close="transferTableModal"></div>
-                <div class="modal-container bg-white rounded-xl shadow-2xl w-full max-w-sm p-6 m-4 relative">
+                <div class="modal-container relative m-2 max-h-[calc(100vh-1rem)] w-full max-w-sm overflow-y-auto rounded-xl bg-white p-4 shadow-2xl sm:p-6">
                     <div class="modal-header flex justify-between items-center mb-4">
                         <h3 class="text-xl font-semibold text-gray-800">Transfer Table</h3>
-                        <button data-close="transferTableModal" class="text-gray-400 hover:text-gray-600">&times;</button>
+                        <button data-close="transferTableModal" class="text-gray-400 hover:text-gray-600" aria-label="Close dialog">&times;</button>
                     </div>
                     <div class="modal-body space-y-3">
                         <input type="hidden" id="transferSourceTableId" value="0">
@@ -172,13 +172,13 @@
             </div>
         @endif
 
-        <div id="finalBillModal" class="modal fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50"
+        <div id="finalBillModal" class="modal fixed inset-0 z-50 flex items-start sm:items-center justify-center overflow-y-auto p-2 bg-black bg-opacity-50"
             style="display: none;">
             <div class="modal-overlay fixed inset-0" data-close="finalBillModal"></div>
-            <div class="modal-container bg-white rounded-xl shadow-2xl w-full max-w-lg p-6 m-4 relative">
+            <div class="modal-container bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[calc(100vh-1rem)] overflow-y-auto p-4 m-2 relative">
                 <div class="modal-header flex justify-between items-center mb-4">
                     <h3 class="text-xl font-semibold text-gray-800">Finalize Bill</h3>
-                    <button data-close="finalBillModal" class="text-gray-400 hover:text-gray-600">&times;</button>
+                    <button data-close="finalBillModal" class="text-gray-400 hover:text-gray-600" aria-label="Close dialog">&times;</button>
                 </div>
                 <div class="modal-body space-y-4">
                     <input type="hidden" id="finalBillTableId" value="0">
@@ -190,17 +190,61 @@
 
                     <div>
                         <label class="block text-sm font-semibold text-gray-700 mb-2">Payment Method</label>
-                        <div class="grid grid-cols-2 gap-2">
+                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
                             @foreach ($paymentTypes as $paymentValue => $paymentLabel)
                                 <label
-                                    class="flex items-center p-3 rounded-lg hover:bg-gray-50 border has-[:checked]:bg-green-50 has-[:checked]:border-green-400">
+                                    class="flex items-center p-2 rounded-lg hover:bg-gray-50 border has-[:checked]:bg-green-50 has-[:checked]:border-green-400">
                                     <input type="radio" name="final-payment-type" value="{{ $paymentValue }}"
                                         id="final-payment-{{ $paymentValue }}"
                                         class="h-4 w-4 text-green-600 border-gray-300 focus:ring-green-500">
                                     <span class="ml-3 text-gray-700 font-medium">{{ $paymentLabel }}</span>
                                 </label>
                             @endforeach
+                            <label
+                                class="flex items-center p-2 rounded-lg hover:bg-gray-50 border has-[:checked]:bg-green-50 has-[:checked]:border-green-400">
+                                <input type="radio" name="final-payment-type" value="split" id="final-payment-split"
+                                    class="h-4 w-4 text-green-600 border-gray-300 focus:ring-green-500">
+                                <span class="ml-3 text-gray-700 font-medium">Split Payment</span>
+                            </label>
                         </div>
+                    </div>
+
+                    <div id="finalSplitPaymentFields" class="hidden p-2 bg-gray-50 border rounded-lg space-y-2">
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label for="finalSplitMethod1" class="block text-sm font-semibold text-gray-700">First Method</label>
+                                <select id="finalSplitMethod1" class="w-full border rounded p-2">
+                                    @foreach ($paymentTypes as $paymentValue => $paymentLabel)
+                                        @if ($paymentValue !== 'credit')
+                                            <option value="{{ $paymentValue }}">{{ $paymentLabel }}</option>
+                                        @endif
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div>
+                                <label for="finalSplitAmount1" class="block text-sm font-semibold text-gray-700">First Amount</label>
+                                <input id="finalSplitAmount1" type="number" min="0.01" step="0.01" inputmode="decimal" autocomplete="off" class="w-full border rounded p-2 text-right">
+                            </div>
+                            <div>
+                                <label for="finalSplitMethod2" class="block text-sm font-semibold text-gray-700">Second Method</label>
+                                <select id="finalSplitMethod2" class="w-full border rounded p-2">
+                                    @foreach ($paymentTypes as $paymentValue => $paymentLabel)
+                                        @if ($paymentValue !== 'credit')
+                                            <option value="{{ $paymentValue }}" @selected($paymentValue === 'fonepay')>{{ $paymentLabel }}</option>
+                                        @endif
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div>
+                                <label for="finalSplitAmount2" class="block text-sm font-semibold text-gray-700">Remainder</label>
+                                <input id="finalSplitAmount2" readonly class="w-full border rounded p-2 text-right bg-gray-100">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3">
+                            <input id="finalSplitReference1" maxlength="100" class="w-full border rounded p-2" placeholder="First reference (optional)">
+                            <input id="finalSplitReference2" maxlength="100" class="w-full border rounded p-2" placeholder="Second reference (optional)">
+                        </div>
+                        <p id="finalSplitTotal" class="text-sm text-gray-600" aria-live="polite"></p>
                     </div>
 
                     <div>
@@ -282,10 +326,10 @@
         </div>
 
         <div id="billPreviewModal"
-            class="modal fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60"
+            class="modal fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black bg-opacity-60 p-2 sm:items-center"
             style="display: none;">
             <div class="modal-overlay fixed inset-0" data-close="billPreviewModal"></div>
-            <div class="modal-container bg-white rounded-xl shadow-2xl w-full max-w-4xl h-[92vh] p-4 m-4 relative flex flex-col">
+            <div class="modal-container relative m-0 flex h-[calc(100vh-1rem)] max-h-[calc(100vh-1rem)] w-full max-w-4xl flex-col overflow-hidden rounded-xl bg-white p-3 shadow-2xl sm:m-2 sm:p-4">
                 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
                     <div>
                         <h3 class="text-xl font-semibold text-gray-800">Bill Preview</h3>
@@ -342,6 +386,10 @@
         const tableColors = @json($table_colors);
         const tableBillingGroups = @json($tableBillingGroups);
         const buyerPanThreshold = {{ (float) config('pos.invoice.buyer_pan_required_above', 10000) }};
+        const vatRate = {{ (float) config('pos.tax.vat_rate', 13) }};
+        const vatInclusive = @json((bool) config('pos.tax.vat_inclusive', true));
+        const serviceChargeEnabled = @json((bool) config('pos.tax.service_charge_enabled', false));
+        const serviceChargeRate = {{ (float) config('pos.tax.service_charge_rate', 0) }};
 
         let runningTables = [];
 
@@ -370,6 +418,17 @@
             $("#saveTransferTableBtn").on("click", handleTransferTable);
             $("#saveFinalBillBtn").on("click", handleFinalBill);
             $("#printBillPreviewBtn").on("click", printBillPreview);
+            $("input[name='final-payment-type']").on("change", function() {
+                const isSplit = this.value === "split";
+                $("#finalSplitPaymentFields").toggleClass("hidden", !isSplit);
+                updateFinalSplitRemainder(isSplit);
+            });
+            $("#finalSplitAmount1, #finalDiscountValue").on("input", () => updateFinalSplitRemainder(false));
+            $("#finalDiscountType, #finalBillingSource").on("change", () => updateFinalSplitRemainder(false));
+            $("#finalSplitMethod1, #finalSplitMethod2").on("change", function() {
+                syncFinalSplitMethodOptions(this.id);
+            });
+            syncFinalSplitMethodOptions();
         }
 
         function handlePayment() {
@@ -418,7 +477,7 @@
 
         // Trigger payment modal
         function triggerPaymentModal(tableId) {
-            $("#paymentModal").show();
+            $("#paymentModal").css("display", "flex");
             $("#paymentTableId").val(tableId);
         }
 
@@ -439,10 +498,10 @@
             const $select = $(selector);
 
             $select.empty();
-            $select.append(new Option(`All orders together - Rs ${formatMoney(group.total || $(`#${tableId}`).data("order-sum"))}`, "all"));
+            $select.append(new Option(`All orders together - NPR ${formatMoney(group.total || $(`#${tableId}`).data("order-sum"))}`, "all"));
 
             sources.forEach(source => {
-                $select.append(new Option(`${source.name} - Rs ${formatMoney(source.total)}`, String(source.id)));
+                $select.append(new Option(`${source.name} - NPR ${formatMoney(source.total)}`, String(source.id)));
             });
 
             if (showWrapper) {
@@ -473,7 +532,7 @@
 
             $("#summaryBillTableId").val(tableId);
             populateBillingSourceSelect(tableId, "#summaryBillingSource");
-            $("#summaryBillModal").show();
+            $("#summaryBillModal").css("display", "flex");
         }
 
         function handleSummaryBill() {
@@ -506,7 +565,7 @@
                 return;
             }
 
-            $("#transferTableModal").show();
+            $("#transferTableModal").css("display", "flex");
         }
 
         function handleTablePreview(tableId) {
@@ -535,7 +594,7 @@
 
             $("#billPreviewStatus").text(statusMessage || "Preview of the 80 mm tax invoice.");
             $("#billPreviewFrame").attr("src", previewUrl);
-            $("#billPreviewModal").show();
+            $("#billPreviewModal").css("display", "flex");
         }
 
         function closeBillPreview() {
@@ -580,7 +639,9 @@
             $("#finalDiscountValue").val("0");
             $("#finalDiscountReason").val("");
             $("#buyerName, #buyerPan, #buyerAddress, #creditCustomerName, #creditCustomerContact").val("");
-            $("#finalBillModal").show();
+            $("#finalSplitAmount1, #finalSplitAmount2, #finalSplitReference1, #finalSplitReference2").val("");
+            $("#finalSplitPaymentFields").addClass("hidden");
+            $("#finalBillModal").css("display", "flex");
         }
 
         function collectBuyerDataIfNeeded(amount) {
@@ -637,6 +698,85 @@
             return discountType === "percentage" ? subtotal * discountValue / 100 : discountValue;
         }
 
+        function finalPayableCents() {
+            const tableId = $("#finalBillTableId").val();
+            const billingSource = $("#finalBillingSource").val() || "all";
+            const subtotalCents = Math.max(Math.round(selectedBillingSubtotal(tableId, billingSource) * 100), 0);
+            const discountCents = Math.max(Math.min(Math.round(discountAmountForTable(tableId, billingSource) * 100), subtotalCents), 0);
+            const afterDiscountCents = subtotalCents - discountCents;
+            const serviceCents = serviceChargeEnabled
+                ? Math.round(afterDiscountCents * serviceChargeRate / 100)
+                : 0;
+            const grossCents = afterDiscountCents + serviceCents;
+
+            return vatInclusive ? grossCents : grossCents + Math.round(grossCents * vatRate / 100);
+        }
+
+        function updateFinalSplitRemainder(autoFillFirst = false) {
+            const totalCents = finalPayableCents();
+            let firstCents = Math.max(Math.round(Number($("#finalSplitAmount1").val() || 0) * 100), 0);
+
+            if (autoFillFirst === true && totalCents >= 2 && firstCents <= 0) {
+                firstCents = Math.floor(totalCents / 2);
+                $("#finalSplitAmount1").val((firstCents / 100).toFixed(2));
+            }
+
+            const remainderCents = Math.max(totalCents - firstCents, 0);
+            const invalidFirstAmount = totalCents >= 2 && firstCents >= totalCents;
+            $("#finalSplitAmount2").val((remainderCents / 100).toFixed(2));
+            $("#finalSplitTotal")
+                .toggleClass("text-red-700", invalidFirstAmount)
+                .toggleClass("text-gray-600", !invalidFirstAmount)
+                .text(invalidFirstAmount
+                    ? `First amount must be less than the bill total of NPR ${(totalCents / 100).toFixed(2)}.`
+                    : `Bill total: NPR ${(totalCents / 100).toFixed(2)} · Remaining: NPR ${(remainderCents / 100).toFixed(2)}`);
+        }
+
+        function syncFinalSplitMethodOptions(changedId = null) {
+            const $first = $("#finalSplitMethod1");
+            const $second = $("#finalSplitMethod2");
+
+            if ($first.val() === $second.val()) {
+                const $target = changedId === "finalSplitMethod2" ? $first : $second;
+                const otherValue = $target.is($first) ? $second.val() : $first.val();
+                $target.val($target.find("option").filter((_, option) => option.value !== otherValue).first().val());
+            }
+
+            $first.find("option").prop("disabled", false).filter(`[value="${$second.val()}"]`).prop("disabled", true);
+            $second.find("option").prop("disabled", false).filter(`[value="${$first.val()}"]`).prop("disabled", true);
+        }
+
+        function collectFinalSplitPayments(paymentType) {
+            if (paymentType !== "split") return [];
+
+            updateFinalSplitRemainder();
+            const methods = [$("#finalSplitMethod1").val(), $("#finalSplitMethod2").val()];
+            const amounts = [$("#finalSplitAmount1").val(), $("#finalSplitAmount2").val()];
+            const totalCents = finalPayableCents();
+            const firstCents = Math.round(Number(amounts[0] || 0) * 100);
+
+            if (methods[0] === methods[1]) {
+                alert("Split payment methods must be different.");
+                return null;
+            }
+
+            if (firstCents >= totalCents) {
+                alert(`First split amount must be less than the bill total of NPR ${(totalCents / 100).toFixed(2)}.`);
+                return null;
+            }
+
+            if (amounts.some(amount => Math.round(Number(amount || 0) * 100) <= 0)) {
+                alert("Each split payment amount must be greater than zero.");
+                return null;
+            }
+
+            return methods.map((method, index) => ({
+                method,
+                amount: Number(amounts[index]).toFixed(2),
+                reference_no: $(`#finalSplitReference${index + 1}`).val().trim(),
+            }));
+        }
+
         function collectFinalBillData() {
             const tableId = $("#finalBillTableId").val();
             const billingSource = $("#finalBillingSource").val() || "all";
@@ -685,11 +825,17 @@
                 return null;
             }
 
+            const payments = collectFinalSplitPayments(paymentType);
+            if (payments === null) {
+                return null;
+            }
+
             return {
                 tableId,
                 billingSource,
                 billAction: "final",
                 paymentType,
+                payments,
                 print_copies: $("#finalPrintCopies").val() || "customer",
                 discount_type: discountType,
                 discount_value: discountValue,

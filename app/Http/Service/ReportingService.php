@@ -4,6 +4,7 @@ namespace App\Http\Service;
 
 use App\Helpers\DateHelper;
 use App\Models\Bill;
+use App\Models\BillPayment;
 use App\Models\Category;
 use App\Models\CreditPayment;
 use App\Models\FiscalCreditNote;
@@ -136,6 +137,7 @@ class ReportingService extends Service
         $end = Carbon::parse($date)->endOfDay();
 
         $directBills = $this->finalizedBillsBetween($start, $end)
+            ->with('payments')
             ->where(function ($query) {
                 $query->whereNull('payment_method')
                     ->orWhere('payment_method', '!=', 'credit');
@@ -148,9 +150,19 @@ class ReportingService extends Service
             ->whereBetween('recorded_at', [$start, $end])
             ->get();
 
-        $directByMethod = $directBills
+        $directByMethod = BillPayment::whereBetween('received_at', [$start, $end])
+            ->get()
+            ->groupBy('payment_method')
+            ->map(fn ($payments) => round((float) $payments->sum('amount'), 2));
+
+        $directBills->filter(fn (Bill $bill) => $bill->payments->isEmpty() && (float) $bill->grand_total > 0)
             ->groupBy(fn (Bill $bill) => $bill->payment_method ?: 'cash')
-            ->map(fn ($bills) => round((float) $bills->sum('grand_total'), 2));
+            ->each(function ($bills, $method) use ($directByMethod) {
+                $directByMethod->put(
+                    $method,
+                    round((float) $directByMethod->get($method, 0) + (float) $bills->sum('grand_total'), 2)
+                );
+            });
 
         $creditByMethod = $creditPayments
             ->groupBy('payment_method')

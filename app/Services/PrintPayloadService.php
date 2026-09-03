@@ -39,7 +39,7 @@ class PrintPayloadService
     {
         $connector = new RawBufferPrintConnector();
         $printer = new Printer($connector);
-        $billDetails = Bill::with(['table', 'sourceTable', 'lockedBy', 'orders.waiter'])->findOrFail($billId);
+        $billDetails = Bill::with(['table', 'sourceTable', 'lockedBy', 'payments', 'orders.waiter'])->findOrFail($billId);
         $orderDetails = BillHelper::getBillOrders($billId);
         $billPrinter = new BillPrinter($printer, $billDetails, $orderDetails, $copyType);
 

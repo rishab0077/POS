@@ -2,11 +2,11 @@
 
     @section('title', 'POS')
 
-    <div id="pos" class="flex flex-col h-[90vh] bg-gray-100 font-sans">
+    <div id="pos" class="flex min-h-[calc(100vh-5rem)] min-w-0 flex-col bg-gray-100 font-sans lg:h-[90vh]">
 
         <header id="order-main-nav"
-            class="flex items-center justify-between w-full bg-gray-800 text-white shadow-md z-10 px-4 py-2 shrink-0">
-            <div id="items-search-options" class="flex-grow flex items-center gap-x-4 w-2/3">
+            class="flex w-full shrink-0 flex-col gap-2 bg-gray-800 px-2 py-2 text-white shadow-md z-10 sm:flex-row sm:items-center sm:justify-between sm:px-4">
+            <div id="items-search-options" class="flex min-w-0 w-full items-center gap-x-2 sm:w-2/3 sm:flex-grow sm:gap-x-4">
                 <input id="search-input"
                     class="w-1/2 p-2 rounded-lg bg-gray-700 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500 placeholder-gray-400"
                     type="text" placeholder="Search by Name..">
@@ -14,7 +14,7 @@
                     class="w-1/2 p-2 rounded-lg bg-gray-700 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500 placeholder-gray-400"
                     type="text" placeholder="By ShortCode..">
             </div>
-            <div id="order-type-options" class="flex items-center justify-end w-1/3 ml-4">
+            <div id="order-type-options" class="flex w-full items-center justify-end sm:ml-4 sm:w-1/3">
                 @php $orderType = $orderType->value; @endphp
                 @if ($table)
                     <div id="dine_in"
@@ -29,10 +29,10 @@
             </div>
         </header>
 
-        <div class="flex flex-1 overflow-hidden">
+        <div class="flex min-w-0 flex-1 flex-col overflow-y-auto lg:flex-row lg:overflow-hidden">
 
-            <div class="w-3/5 flex">
-                <aside id="category" class="category w-1/4 bg-gray-200 overflow-y-auto border-r border-gray-300 p-2">
+            <div class="flex h-[50vh] min-h-[24rem] min-w-0 w-full shrink-0 lg:h-auto lg:min-h-0 lg:w-3/5">
+                <aside id="category" class="category w-1/3 shrink-0 bg-gray-200 overflow-y-auto border-r border-gray-300 p-2 sm:w-1/4">
                     <div class="flex flex-col gap-y-2">
                         @foreach ($categoriesWithMenus as $category)
                             <button
@@ -44,11 +44,11 @@
                     </div>
                 </aside>
 
-                <main class="w-3/4 bg-white overflow-y-auto p-4">
+                <main class="min-w-0 flex-1 bg-white overflow-y-auto p-2 sm:p-4">
                     @foreach ($categoriesWithMenus as $category)
                         <div id="c{{ $category->id }}" class="menu-items hidden">
                             <div
-                                class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                                class="grid grid-cols-1 min-[420px]:grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5 gap-2 sm:gap-4">
                                 @foreach ($category->menus as $menu)
                                     <button
                                         class="flex flex-col justify-center items-center text-center p-2 h-24 rounded-lg shadow-md bg-green-600 text-white font-semibold transition-transform transform hover:-translate-y-1 hover:shadow-lg"
@@ -65,7 +65,7 @@
                 </main>
             </div>
 
-            <aside id="order-panel" class="w-2/5 bg-gray-100 flex flex-col border-l border-gray-300">
+            <aside id="order-panel" class="flex min-h-[36rem] min-w-0 w-full flex-col border-l border-gray-300 bg-gray-100 lg:min-h-0 lg:w-2/5">
                 <div id="order-options-parent"
                     class="flex items-center justify-around p-2 border-b border-gray-200 bg-white shrink-0">
                     <button
@@ -115,16 +115,26 @@
                     </div>
                     <table class="w-full shrink-0">
                         <tfoot class="bg-gray-200 font-bold">
+                            @if ($existingOrderTotal > 0)
+                                <tr class="text-sm text-gray-600">
+                                    <td class="px-3 pt-2 text-left" colspan="2">Existing orders</td>
+                                    <td class="px-3 pt-2 text-right">NPR {{ number_format($existingOrderTotal, 2) }}</td>
+                                </tr>
+                            @endif
+                            <tr class="text-sm text-gray-600 {{ $existingOrderTotal > 0 ? '' : 'hidden' }}">
+                                <td class="px-3 py-1 text-left" colspan="2">New items</td>
+                                <td class="px-3 py-1 text-right">NPR <span id="total">0.00</span></td>
+                            </tr>
                             <tr class="text-lg text-gray-800">
-                                <td class="p-3 text-left" colspan="2">Total</td>
-                                <td id="total" class="p-3 text-right">0</td>
+                                <td class="p-3 text-left" colspan="2">{{ $existingOrderTotal > 0 ? 'Bill total' : 'Total' }}</td>
+                                <td class="p-3 text-right">NPR <span id="billing-total">{{ number_format($existingOrderTotal, 2) }}</span></td>
                             </tr>
                         </tfoot>
                     </table>
                 </div>
 
-                <div class="p-2 bg-gray-100 border-t border-gray-200 shrink-0">
-                    <div id="payment-types" class="flex items-center justify-around gap-2 mb-2">
+                <div class="p-2 bg-gray-100 border-t border-gray-200 shrink-0 max-h-[46vh] overflow-y-auto overscroll-contain">
+                    <div id="payment-types" class="flex flex-wrap items-center justify-around gap-2 mb-2">
                         @foreach ($paymentTypes as $paymentValue => $paymentLabel)
                             <label
                                 class="flex-1 flex items-center justify-center p-2 rounded-lg border bg-white cursor-pointer has-[:checked]:bg-green-50 has-[:checked]:border-green-400 has-[:checked]:ring-2 has-[:checked]:ring-green-200">
@@ -134,6 +144,49 @@
                                 <span class="ml-2 font-medium text-gray-700">{{ $paymentLabel }}</span>
                             </label>
                         @endforeach
+                        <label
+                            class="flex-1 flex items-center justify-center p-2 rounded-lg border bg-white cursor-pointer has-[:checked]:bg-green-50 has-[:checked]:border-green-400 has-[:checked]:ring-2 has-[:checked]:ring-green-200">
+                            <input id="split" type="radio" value="split" name="payment-type"
+                                class="h-4 w-4 text-green-600 focus:ring-green-500">
+                            <span class="ml-2 font-medium text-gray-700">Split</span>
+                        </label>
+                    </div>
+                    <div id="split-payment-fields" class="hidden mb-2 p-2 bg-white border rounded-lg space-y-2">
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label for="split-method-1" class="block text-xs font-semibold text-gray-600">First method</label>
+                                <select id="split-method-1" class="w-full border rounded p-2 text-sm">
+                                    @foreach ($paymentTypes as $paymentValue => $paymentLabel)
+                                        @if ($paymentValue !== 'credit')
+                                            <option value="{{ $paymentValue }}">{{ $paymentLabel }}</option>
+                                        @endif
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div>
+                                <label for="split-amount-1" class="block text-xs font-semibold text-gray-600">First amount</label>
+                                <input id="split-amount-1" type="number" min="0.01" step="0.01" inputmode="decimal" autocomplete="off" class="w-full border rounded p-2 text-sm text-right">
+                            </div>
+                            <div>
+                                <label for="split-method-2" class="block text-xs font-semibold text-gray-600">Second method</label>
+                                <select id="split-method-2" class="w-full border rounded p-2 text-sm">
+                                    @foreach ($paymentTypes as $paymentValue => $paymentLabel)
+                                        @if ($paymentValue !== 'credit')
+                                            <option value="{{ $paymentValue }}" @selected($paymentValue === 'fonepay')>{{ $paymentLabel }}</option>
+                                        @endif
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div>
+                                <label for="split-amount-2" class="block text-xs font-semibold text-gray-600">Remainder</label>
+                                <input id="split-amount-2" readonly class="w-full border rounded p-2 text-sm text-right bg-gray-100">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <input id="split-reference-1" maxlength="100" class="w-full border rounded p-2 text-sm" placeholder="First reference (optional)">
+                            <input id="split-reference-2" maxlength="100" class="w-full border rounded p-2 text-sm" placeholder="Second reference (optional)">
+                        </div>
+                        <p id="split-payment-total" class="text-xs text-gray-600" aria-live="polite"></p>
                     </div>
                     <div class="mb-2">
                         <label for="print-copies" class="sr-only">Receipt Copies</label>
@@ -163,10 +216,10 @@
             </aside>
         </div>
 
-        <div id="addNotesModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60"
+        <div id="addNotesModal" class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black bg-opacity-60 p-2 sm:items-center"
             style="display: none;">
             <div class="modal-overlay absolute inset-0" tabindex="-1" data-close="addNotesModal"></div>
-            <div class="modal-container bg-white rounded-xl shadow-2xl w-full max-w-md m-4 relative">
+            <div class="modal-container relative m-2 max-h-[calc(100vh-1rem)] w-full max-w-md overflow-y-auto rounded-xl bg-white shadow-2xl">
                 <div class="modal-header flex justify-between items-center p-4 border-b">
                     <h3 class="text-xl font-semibold text-gray-800">Add Special Instructions</h3>
                     <button class="modal-close text-gray-400 hover:text-gray-600 font-bold py-1 px-3"
@@ -222,6 +275,11 @@
         const settleTableUrl = "{{ route('pos.table.settle', [], false) }}";
         const buyerPanThreshold = {{ (float) config('pos.invoice.buyer_pan_required_above', 10000) }};
         const defaultPrintCopies = @json(config('pos.printing.receipt.default_copies', 'customer'));
+        const vatRate = {{ (float) config('pos.tax.vat_rate', 13) }};
+        const vatInclusive = @json((bool) config('pos.tax.vat_inclusive', true));
+        const serviceChargeEnabled = @json((bool) config('pos.tax.service_charge_enabled', false));
+        const serviceChargeRate = {{ (float) config('pos.tax.service_charge_rate', 0) }};
+        const existingTableOrderTotal = {{ (float) $existingOrderTotal }};
     </script>
     <script src="{{ asset('js/pos.js') }}"></script>
     <style>

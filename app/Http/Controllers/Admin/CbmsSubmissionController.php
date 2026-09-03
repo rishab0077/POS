@@ -26,7 +26,7 @@ class CbmsSubmissionController extends Controller
             'search' => ['nullable', 'string', 'max:100'],
         ]);
 
-        $query = CbmsSubmission::with('snapshot.bill', 'snapshot.items', 'snapshot.creditNotes.items');
+        $query = CbmsSubmission::with('snapshot.bill.payments', 'snapshot.items', 'snapshot.creditNotes.items');
 
         if (!empty($filters['status'])) {
             $query->where('status', $filters['status']);

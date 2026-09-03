@@ -7,11 +7,11 @@
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
             <div class="bg-white rounded shadow p-5">
                 <div class="text-sm text-gray-500">Stock Valuation</div>
-                <div class="text-2xl font-semibold">Rs {{ number_format($stockValue, 2) }}</div>
+                <div class="text-2xl font-semibold">NPR {{ number_format($stockValue, 2) }}</div>
             </div>
             <div class="bg-white rounded shadow p-5">
                 <div class="text-sm text-gray-500">Open Payables</div>
-                <div class="text-2xl font-semibold">Rs {{ number_format($payables->sum('balance_amount'), 2) }}</div>
+                <div class="text-2xl font-semibold">NPR {{ number_format($payables->sum('balance_amount'), 2) }}</div>
             </div>
             <div class="bg-white rounded shadow p-5">
                 <div class="text-sm text-gray-500">Low Stock Items</div>
@@ -42,9 +42,9 @@
                             @endphp
                             <tr>
                                 <td class="px-4 py-3 text-sm font-medium">{{ $supplier->name }}</td>
-                                <td class="px-4 py-3 text-sm text-right">Rs {{ number_format($purchaseTotal, 2) }}</td>
-                                <td class="px-4 py-3 text-sm text-right">Rs {{ number_format($paymentTotal, 2) }}</td>
-                                <td class="px-4 py-3 text-sm text-right font-semibold">Rs {{ number_format($balance, 2) }}</td>
+                                <td class="px-4 py-3 text-sm text-right">NPR {{ number_format($purchaseTotal, 2) }}</td>
+                                <td class="px-4 py-3 text-sm text-right">NPR {{ number_format($paymentTotal, 2) }}</td>
+                                <td class="px-4 py-3 text-sm text-right font-semibold">NPR {{ number_format($balance, 2) }}</td>
                             </tr>
                         @endforeach
                     </tbody>
@@ -71,7 +71,7 @@
                                     <div class="text-xs text-gray-500">{{ optional($invoice->due_date ?: $invoice->bill_date)->format('Y-m-d') }}</div>
                                 </td>
                                 <td class="px-4 py-3 text-sm">{{ $invoice->supplier->name }}</td>
-                                <td class="px-4 py-3 text-sm text-right font-semibold">Rs {{ number_format($invoice->balance_amount, 2) }}</td>
+                                <td class="px-4 py-3 text-sm text-right font-semibold">NPR {{ number_format($invoice->balance_amount, 2) }}</td>
                             </tr>
                         @empty
                             <tr>
@@ -103,8 +103,8 @@
                             <td class="px-4 py-3 text-sm font-medium">{{ $item->name }}</td>
                             <td class="px-4 py-3 text-sm">{{ $item->category->name }}</td>
                             <td class="px-4 py-3 text-sm text-right">{{ number_format($item->current_quantity, 3) }} {{ $item->unit }}</td>
-                            <td class="px-4 py-3 text-sm text-right">Rs {{ number_format($item->average_unit_cost, 2) }}</td>
-                            <td class="px-4 py-3 text-sm text-right font-semibold">Rs {{ number_format((float) $item->current_quantity * (float) $item->average_unit_cost, 2) }}</td>
+                            <td class="px-4 py-3 text-sm text-right">NPR {{ number_format($item->average_unit_cost, 2) }}</td>
+                            <td class="px-4 py-3 text-sm text-right font-semibold">NPR {{ number_format((float) $item->current_quantity * (float) $item->average_unit_cost, 2) }}</td>
                         </tr>
                     @endforeach
                 </tbody>
@@ -124,7 +124,7 @@
                                     <a href="{{ route('inventory.purchase-invoices.show', $invoice) }}" class="text-blue-700 font-semibold">{{ $invoice->invoice_no }}</a>
                                     <div class="text-xs text-gray-500">{{ $invoice->supplier->name }}</div>
                                 </td>
-                                <td class="px-4 py-3 text-sm text-right">Rs {{ number_format($invoice->total_amount, 2) }}</td>
+                                <td class="px-4 py-3 text-sm text-right">NPR {{ number_format($invoice->total_amount, 2) }}</td>
                             </tr>
                         @endforeach
                     </tbody>
@@ -143,7 +143,7 @@
                                     {{ $payment->supplier->name }}
                                     <div class="text-xs text-gray-500">{{ optional($payment->payment_date)->format('Y-m-d') }}</div>
                                 </td>
-                                <td class="px-4 py-3 text-sm text-right">Rs {{ number_format($payment->amount, 2) }}</td>
+                                <td class="px-4 py-3 text-sm text-right">NPR {{ number_format($payment->amount, 2) }}</td>
                             </tr>
                         @endforeach
                     </tbody>

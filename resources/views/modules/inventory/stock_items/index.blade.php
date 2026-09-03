@@ -30,7 +30,7 @@
                             <td class="px-4 py-3 text-sm text-gray-700">{{ $item->category->name }}</td>
                             <td class="px-4 py-3 text-sm text-gray-700">{{ $item->defaultSupplier->name ?? '-' }}</td>
                             <td class="px-4 py-3 text-sm text-right">{{ number_format($item->current_quantity, 3) }} {{ $item->unit }}</td>
-                            <td class="px-4 py-3 text-sm text-right">Rs {{ number_format($item->average_unit_cost, 2) }}</td>
+                            <td class="px-4 py-3 text-sm text-right">NPR {{ number_format($item->average_unit_cost, 2) }}</td>
                             <td class="px-4 py-3 text-sm text-center">{{ $item->auto_deduct ? 'Yes' : 'No' }}</td>
                             <td class="px-4 py-3 text-sm text-right">
                                 <a href="{{ route('inventory.stock-items.edit', $item) }}"

@@ -101,8 +101,14 @@
                                 @elseif ($submission->status === 'submitted' && $returnableItems->isNotEmpty())
                                     <details class="w-64">
                                         <summary class="text-red-700 cursor-pointer">Issue credit note</summary>
-                                        <form method="POST" action="{{ route('admin.cbms.credit-note.issue', $submission) }}" class="mt-2 space-y-2">
-                                            @csrf
+                                         <form method="POST" action="{{ route('admin.cbms.credit-note.issue', $submission) }}" class="mt-2 space-y-2">
+                                             @csrf
+                                             @if ($snapshot->bill->payments->isNotEmpty())
+                                                 <div class="p-2 text-xs bg-gray-50 border rounded">
+                                                     <strong>Original payment:</strong>
+                                                     {{ $snapshot->bill->payments->map(fn ($payment) => config('pos.payments.' . $payment->payment_method, ucfirst($payment->payment_method)) . ' NPR ' . number_format($payment->amount, 2))->join(' + ') }}
+                                                 </div>
+                                             @endif
                                             @foreach ($returnableItems as $item)
                                                 @php $remaining = round((float) $item->quantity - (float) $returnedByItem->get($item->id, 0), 3); @endphp
                                                 <label class="block text-xs">

@@ -118,8 +118,117 @@ function calculateTotal() {
     const grandtotal = Number(total - discount);
 
     $("#grandtotal").text(grandtotal);
-    $("#total").text(total);
+    $("#total").text(total.toFixed(2));
+    $("#billing-total").text((payableCents(total + existingTableOrderTotal) / 100).toFixed(2));
+    updateSplitAvailability();
+    updateSplitRemainder(true);
 }
+
+function payableCents(subtotal, discount = 0) {
+    const subtotalCents = Math.max(Math.round(Number(subtotal) * 100), 0);
+    const discountCents = Math.max(Math.min(Math.round(Number(discount) * 100), subtotalCents), 0);
+    const afterDiscountCents = subtotalCents - discountCents;
+    const serviceCents = serviceChargeEnabled
+        ? Math.round(afterDiscountCents * serviceChargeRate / 100)
+        : 0;
+    const grossCents = afterDiscountCents + serviceCents;
+
+    return vatInclusive ? grossCents : grossCents + Math.round(grossCents * vatRate / 100);
+}
+
+function updateSplitAvailability() {
+    const canSplit = Math.round(Number($("#billing-total").text()) * 100) >= 2;
+    $("#split").prop("disabled", !canSplit)
+        .closest("label")
+        .toggleClass("opacity-50 cursor-not-allowed", !canSplit);
+
+    if (!canSplit && $("#split").is(":checked")) {
+        $("#cash").prop("checked", true);
+        $("#split-payment-fields").addClass("hidden");
+    }
+}
+
+function updateSplitRemainder(autoFillFirst = false) {
+    if ($("#split-payment-fields").length === 0) return;
+
+    const totalCents = Math.max(Math.round(Number($("#billing-total").text()) * 100), 0);
+    let firstCents = Math.max(Math.round(Number($("#split-amount-1").val() || 0) * 100), 0);
+
+    if (totalCents < 2) {
+        $("#split-amount-1").val("");
+        firstCents = 0;
+    } else if (autoFillFirst === true && firstCents <= 0) {
+        firstCents = Math.floor(totalCents / 2);
+        $("#split-amount-1").val((firstCents / 100).toFixed(2));
+    }
+
+    const remainderCents = Math.max(totalCents - firstCents, 0);
+    const invalidFirstAmount = totalCents >= 2 && firstCents >= totalCents;
+    $("#split-amount-2").val((remainderCents / 100).toFixed(2));
+    $("#split-payment-total")
+        .toggleClass("text-red-700", invalidFirstAmount)
+        .toggleClass("text-gray-600", !invalidFirstAmount)
+        .text(invalidFirstAmount
+            ? `First amount must be less than the bill total of NPR ${(totalCents / 100).toFixed(2)}.`
+            : `Bill total: NPR ${(totalCents / 100).toFixed(2)} · Remaining: NPR ${(remainderCents / 100).toFixed(2)}`);
+}
+
+function syncSplitMethodOptions(changedId = null) {
+    const $first = $("#split-method-1");
+    const $second = $("#split-method-2");
+    if (!$first.length || !$second.length) return;
+
+    if ($first.val() === $second.val()) {
+        const $target = changedId === "split-method-2" ? $first : $second;
+        const otherValue = $target.is($first) ? $second.val() : $first.val();
+        $target.val($target.find("option").filter((_, option) => option.value !== otherValue).first().val());
+    }
+
+    $first.find("option").prop("disabled", false).filter(`[value="${$second.val()}"]`).prop("disabled", true);
+    $second.find("option").prop("disabled", false).filter(`[value="${$first.val()}"]`).prop("disabled", true);
+}
+
+function collectSplitPaymentsIfNeeded(paymentMethod) {
+    if (paymentMethod !== "split") return [];
+
+    updateSplitRemainder();
+    const methods = [$("#split-method-1").val(), $("#split-method-2").val()];
+    const amounts = [$("#split-amount-1").val(), $("#split-amount-2").val()];
+    const totalCents = Math.round(Number($("#billing-total").text()) * 100);
+    const firstCents = Math.round(Number(amounts[0] || 0) * 100);
+
+    if (methods[0] === methods[1]) {
+        alert("Split payment methods must be different.");
+        return null;
+    }
+
+    if (firstCents >= totalCents) {
+        alert(`First split amount must be less than the bill total of NPR ${(totalCents / 100).toFixed(2)}.`);
+        return null;
+    }
+
+    if (amounts.some((amount) => Math.round(Number(amount || 0) * 100) <= 0)) {
+        alert("Each split payment amount must be greater than zero.");
+        return null;
+    }
+
+    return methods.map((method, index) => ({
+        method,
+        amount: Number(amounts[index]).toFixed(2),
+        reference_no: $(`#split-reference-${index + 1}`).val().trim(),
+    }));
+}
+
+$("input[name='payment-type']").on("change", function () {
+    const isSplit = this.value === "split";
+    $("#split-payment-fields").toggleClass("hidden", !isSplit);
+    updateSplitRemainder(isSplit);
+});
+$("#split-amount-1").on("input", () => updateSplitRemainder(false));
+$("#split-method-1, #split-method-2").on("change", function () {
+    syncSplitMethodOptions(this.id);
+});
+syncSplitMethodOptions();
 
 function collectBuyerDataIfNeeded(amount) {
     if (Number(amount) <= Number(buyerPanThreshold || 10000)) {
@@ -279,6 +388,7 @@ $(document).ready(function () {
 
     // set default payment type
     $("#cash").prop("checked", true);
+    calculateTotal();
 
     // Hide KOT if Takeaway is selected
     if ($("#takeaway").hasClass("active")) {
@@ -287,7 +397,7 @@ $(document).ready(function () {
     }
 
     //check if any previous KOTs exist
-    hasPrevOrders = $("#prev-kots").length > 0;
+    hasPrevOrders = existingTableOrderTotal > 0;
 
     // add click event listener to order type options
     $("#order-type-options div").click(function () {
@@ -350,6 +460,9 @@ $("#cancel-order").click(function () {
     orderItems.splice(0, orderItems.length);
     renderOrderTable();
     $("input[type='radio']").prop("checked", false);
+    $("#cash").prop("checked", true);
+    $("#split-payment-fields").addClass("hidden");
+    $("#split-amount-1, #split-amount-2, #split-reference-1, #split-reference-2").val("");
     $("textarea").val("");
     $("input[type='checkbox']").prop("checked", false);
 });
@@ -364,7 +477,7 @@ $("#cancel-order").click(function () {
 
 // Add Notes Modal Open
 document.getElementById("add-notes-btn").addEventListener("click", function () {
-    document.getElementById("addNotesModal").style.display = "block";
+    document.getElementById("addNotesModal").style.display = "flex";
 });
 
 // Add Notes Modal Close
@@ -378,6 +491,7 @@ document
 
 // Notes Modal Save Button
 document.getElementById("saveNotesBtn").addEventListener("click", function () {
+    selectedNotes.length = 0;
     $('input[name="notes"]:checked').each(function () {
         selectedNotes.push($(this).next().text());
     });
@@ -406,7 +520,11 @@ $("#bill-order").click(function (e) {
     e.preventDefault(); // Prevent default action
 
     if (orderItems.length === 0) {
-        alert("No Items Selected");
+        if (hasPrevOrders) {
+            billTable();
+        } else {
+            alert("No Items Selected");
+        }
         return;
     }
 
@@ -449,7 +567,7 @@ function saveOrder(printBill = false) {
         tableId = $("#table").data("tableid");
     }
 
-    const paymentMethod = $("input[name='payment-type']:checked").val();
+    const paymentMethod = printBill ? $("input[name='payment-type']:checked").val() : "cash";
 
     const order = {
         orderItems: orderItems,
@@ -458,13 +576,18 @@ function saveOrder(printBill = false) {
         grandtotal: $("#grandtotal").text(),
     };
 
-    const buyerData = printBill ? collectBuyerDataIfNeeded(order.total) : {};
+    const buyerData = printBill ? collectBuyerDataIfNeeded($("#billing-total").text()) : {};
     if (buyerData === null) {
         return;
     }
 
     const creditData = printBill ? collectCreditDataIfNeeded(paymentMethod) : {};
     if (creditData === null) {
+        return;
+    }
+
+    const payments = printBill ? collectSplitPaymentsIfNeeded(paymentMethod) : [];
+    if (payments === null) {
         return;
     }
 
@@ -479,6 +602,7 @@ function saveOrder(printBill = false) {
             specialInstructions: selectedNotes,
             isPickUpOrder: isPickUpOrder,
             paymentMethod: paymentMethod,
+            payments,
             print_copies: $("#print-copies").val() || defaultPrintCopies,
             billTable: billTable,
             order: order,
@@ -511,9 +635,18 @@ function billTable() {
     let tableId = $("#table").data("tableid");
     let csrf_token = $('meta[name="csrf-token"]').attr("content");
     let paymentType = $("input[name='payment-type']:checked").val();
+    const buyerData = collectBuyerDataIfNeeded($("#billing-total").text());
+    if (buyerData === null) {
+        return;
+    }
     let creditData = collectCreditDataIfNeeded(paymentType);
 
     if (creditData === null) {
+        return;
+    }
+
+    const payments = collectSplitPaymentsIfNeeded(paymentType);
+    if (payments === null) {
         return;
     }
 
@@ -525,7 +658,9 @@ function billTable() {
         data: {
             tableId: tableId,
             paymentType: paymentType,
+            payments,
             print_copies: $("#print-copies").val() || defaultPrintCopies,
+            ...buyerData,
             ...creditData,
         },
         headers: {

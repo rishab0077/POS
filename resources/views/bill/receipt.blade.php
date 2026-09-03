@@ -178,10 +178,23 @@
                 <td><strong>Grand Total</strong></td>
                 <td class="right"><strong>{{ $business['currency_symbol'] }} {{ number_format($bill->grand_total, 2) }}</strong></td>
             </tr>
-            <tr>
-                <td>Payment Method</td>
-                <td class="right">{{ config('pos.payments.' . $bill->payment_method, $bill->payment_method ?: '-') }}</td>
-            </tr>
+            @forelse ($bill->payments as $payment)
+                <tr>
+                    <td>{{ config('pos.payments.' . $payment->payment_method, ucfirst($payment->payment_method)) }}</td>
+                    <td class="right">{{ $business['currency_symbol'] }} {{ number_format($payment->amount, 2) }}</td>
+                </tr>
+                @if ($payment->reference_no)
+                    <tr>
+                        <td>Reference</td>
+                        <td class="right">{{ $payment->reference_no }}</td>
+                    </tr>
+                @endif
+            @empty
+                <tr>
+                    <td>Payment Method</td>
+                    <td class="right">{{ config('pos.payments.' . $bill->payment_method, $bill->payment_method ?: '-') }}</td>
+                </tr>
+            @endforelse
         </table>
     </div>
 

@@ -18,4 +18,8 @@ if [ "${APP_ENV:-production}" = "production" ] && [ "${1:-}" = "php-fpm" ]; then
     php artisan view:cache
 fi
 
-exec "$@"
+if [ "${1:-}" = "php-fpm" ]; then
+    exec "$@"
+fi
+
+exec su-exec www-data "$@"

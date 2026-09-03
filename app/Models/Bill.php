@@ -101,6 +101,11 @@ class Bill extends Model
         return $this->hasMany(CreditPayment::class);
     }
 
+    public function payments()
+    {
+        return $this->hasMany(BillPayment::class);
+    }
+
     public function fiscalSnapshot()
     {
         return $this->hasOne(FiscalInvoiceSnapshot::class);

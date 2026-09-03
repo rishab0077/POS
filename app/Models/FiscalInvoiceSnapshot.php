@@ -21,6 +21,7 @@ class FiscalInvoiceSnapshot extends Model
         'vat_rate' => 'decimal:3',
         'vat' => 'decimal:2',
         'total_sales' => 'decimal:2',
+        'payment_breakdown' => 'array',
         'created_at' => 'datetime',
     ];
 

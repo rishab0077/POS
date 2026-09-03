@@ -34,7 +34,7 @@
                                 <div class="text-xs text-gray-500">{{ $supplier->phone ?: '-' }}</div>
                             </td>
                             <td class="px-4 py-3 text-sm text-gray-700">{{ $supplier->vat_pan_no ?: '-' }}</td>
-                            <td class="px-4 py-3 text-sm text-right font-semibold">Rs {{ number_format($supplier->balance(), 2) }}</td>
+                            <td class="px-4 py-3 text-sm text-right font-semibold">NPR {{ number_format($supplier->balance(), 2) }}</td>
                             <td class="px-4 py-3 text-sm text-center">{{ $supplier->active ? 'Yes' : 'No' }}</td>
                             <td class="px-4 py-3 text-sm text-right">
                                 <a href="{{ route('inventory.suppliers.edit', $supplier) }}" class="text-blue-700 font-semibold">Edit</a>

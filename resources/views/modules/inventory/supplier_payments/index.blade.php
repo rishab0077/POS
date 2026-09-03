@@ -34,7 +34,7 @@
                                 @endif
                             </td>
                             <td class="px-4 py-3 text-sm">{{ config('pos.purchase_payments')[$payment->payment_method] ?? $payment->payment_method }}</td>
-                            <td class="px-4 py-3 text-sm text-right font-semibold">Rs {{ number_format($payment->amount, 2) }}</td>
+                            <td class="px-4 py-3 text-sm text-right font-semibold">NPR {{ number_format($payment->amount, 2) }}</td>
                         </tr>
                     @empty
                         <tr>

@@ -35,8 +35,8 @@
                                     {{ ucfirst($invoice->status) }}
                                 </span>
                             </td>
-                            <td class="px-4 py-3 text-sm text-right">Rs {{ number_format($invoice->total_amount, 2) }}</td>
-                            <td class="px-4 py-3 text-sm text-right">Rs {{ number_format($invoice->balance_amount, 2) }}</td>
+                            <td class="px-4 py-3 text-sm text-right">NPR {{ number_format($invoice->total_amount, 2) }}</td>
+                            <td class="px-4 py-3 text-sm text-right">NPR {{ number_format($invoice->balance_amount, 2) }}</td>
                             <td class="px-4 py-3 text-sm text-right space-x-2">
                                 <a href="{{ route('inventory.purchase-invoices.show', $invoice) }}" class="text-blue-700 font-semibold">View</a>
                                 @if ($invoice->isDraft())

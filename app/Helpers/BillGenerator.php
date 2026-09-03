@@ -61,9 +61,9 @@ class BillGenerator
             }
         }
 
-        $totalPadding = self::padText("Total: Rs {$billDetails['grand_total']}", self::LINE_WIDTH, 'left');
-        $discountPadding = self::padText("Discount: Rs {$billDetails['discount']}", self::LINE_WIDTH, 'left');
-        $grandTotalPadding = self::padText("Grand Total: Rs {$billDetails['grand_total']}", self::LINE_WIDTH, 'left');
+        $totalPadding = self::padText("Total: NPR {$billDetails['grand_total']}", self::LINE_WIDTH, 'left');
+        $discountPadding = self::padText("Discount: NPR {$billDetails['discount']}", self::LINE_WIDTH, 'left');
+        $grandTotalPadding = self::padText("Grand Total: NPR {$billDetails['grand_total']}", self::LINE_WIDTH, 'left');
 
         $textContent .= str_repeat('-', self::LINE_WIDTH) . "\n";
         $textContent .= "$totalPadding\n$discountPadding\n$grandTotalPadding\n\n";

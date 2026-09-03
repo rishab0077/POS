@@ -63,9 +63,14 @@ class OperationsPhaseThreeATest extends TestCase
     public function test_production_image_includes_the_database_backup_client(): void
     {
         $this->assertStringContainsString(
-            'RUN apk add --no-cache mariadb-client mariadb-connector-c',
+            'RUN apk add --no-cache mariadb-client mariadb-connector-c su-exec',
             file_get_contents(base_path('Dockerfile'))
         );
+        $this->assertStringContainsString(
+            'if [ "${1:-}" = "php-fpm" ]; then',
+            file_get_contents(base_path('docker/entrypoint.sh'))
+        );
+        $this->assertStringContainsString('exec su-exec www-data "$@"', file_get_contents(base_path('docker/entrypoint.sh')));
     }
 
     public function test_backup_retention_dry_run_does_not_delete_files(): void

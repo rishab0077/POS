@@ -208,9 +208,16 @@ class BillHelper
         });
     }
 
-    public static function finalizeBill(int $billId, string $paymentMethod, array $buyerData = [], array $discountData = [], bool $closeBill = false): Bill
+    public static function finalizeBill(
+        int $billId,
+        string $paymentMethod,
+        array $buyerData = [],
+        array $discountData = [],
+        bool $closeBill = false,
+        array $payments = []
+    ): Bill
     {
-        return DB::transaction(function () use ($billId, $paymentMethod, $buyerData, $discountData, $closeBill) {
+        return DB::transaction(function () use ($billId, $paymentMethod, $buyerData, $discountData, $closeBill, $payments) {
             $bill = Bill::with('orders')->lockForUpdate()->findOrFail($billId);
 
             if ($bill->isLocked()) {
@@ -225,6 +232,7 @@ class BillHelper
             $buyer = self::buyerPayload($buyerData);
             $credit = self::creditPayload($paymentMethod, $buyerData);
             $discountApproval = self::discountApprovalPayload((float) $discountPayload['discount'], $buyerData);
+            $paymentAllocations = self::paymentAllocations($paymentMethod, $payments, $tax['grand_total']);
 
             self::validateBuyerDetails($tax['grand_total'], $buyer);
 
@@ -248,10 +256,11 @@ class BillHelper
             ], $buyer, $credit, $discountApproval));
 
             $bill = $bill->fresh();
+            $bill->payments()->createMany($paymentAllocations);
             $inventoryConsumption = self::deductStock($bill);
             self::snapshotFiscalInvoice($bill, $inventoryConsumption);
 
-            return $bill;
+            return $bill->load('payments');
         });
     }
 
@@ -417,6 +426,119 @@ class BillHelper
         ];
     }
 
+    private static function paymentAllocations(string $paymentMethod, array $payments, float $grandTotal): array
+    {
+        $totalCents = (int) round($grandTotal * 100);
+
+        if ($paymentMethod === 'credit') {
+            if ($payments !== []) {
+                throw ValidationException::withMessages(['payments' => 'Credit bills cannot include direct payment allocations.']);
+            }
+
+            return [];
+        }
+
+        if ($paymentMethod !== 'split') {
+            if ($payments !== []) {
+                throw ValidationException::withMessages(['payments' => 'Payment allocations are only accepted for split payments.']);
+            }
+
+            if (!array_key_exists($paymentMethod, config('pos.payments'))) {
+                throw ValidationException::withMessages(['paymentMethod' => 'Select a supported payment method.']);
+            }
+
+            if ($totalCents === 0) {
+                return [];
+            }
+
+            return [[
+                'payment_method' => $paymentMethod,
+                'amount' => self::centsToMoney($totalCents),
+                'received_at' => now(),
+                'recorded_by' => auth()->id(),
+            ]];
+        }
+
+        if ($totalCents === 0) {
+            throw ValidationException::withMessages(['payments' => 'A zero-total bill cannot be split.']);
+        }
+
+        if (count($payments) !== 2) {
+            throw ValidationException::withMessages(['payments' => 'A split payment requires exactly two allocations.']);
+        }
+
+        $allowedMethods = array_diff(array_keys(config('pos.payments')), ['credit']);
+        $allocations = [];
+
+        foreach (array_values($payments) as $index => $payment) {
+            $method = $payment['method'] ?? null;
+
+            if (!is_string($method) || !in_array($method, $allowedMethods, true)) {
+                throw ValidationException::withMessages([
+                    "payments.{$index}.method" => 'Select a supported cash, card, or wallet method.',
+                ]);
+            }
+
+            $amountCents = self::moneyToCents($payment['amount'] ?? null, "payments.{$index}.amount");
+
+            if ($amountCents <= 0) {
+                throw ValidationException::withMessages([
+                    "payments.{$index}.amount" => 'Each split amount must be greater than zero.',
+                ]);
+            }
+
+            $reference = isset($payment['reference_no']) ? trim((string) $payment['reference_no']) : null;
+            if ($reference !== null && mb_strlen($reference) > 100) {
+                throw ValidationException::withMessages([
+                    "payments.{$index}.reference_no" => 'Payment references may not exceed 100 characters.',
+                ]);
+            }
+
+            $allocations[] = [
+                'payment_method' => $method,
+                'amount' => self::centsToMoney($amountCents),
+                'reference_no' => $reference ?: null,
+                'received_at' => now(),
+                'recorded_by' => auth()->id(),
+            ];
+        }
+
+        if ($allocations[0]['payment_method'] === $allocations[1]['payment_method']) {
+            throw ValidationException::withMessages(['payments' => 'Split payment methods must be different.']);
+        }
+
+        $allocatedCents = array_sum(array_map(
+            fn (array $allocation) => self::moneyToCents($allocation['amount'], 'payments'),
+            $allocations
+        ));
+
+        if ($allocatedCents !== $totalCents) {
+            throw ValidationException::withMessages([
+                'payments' => 'Split payment amounts must equal the exact bill total of NPR ' . self::centsToMoney($totalCents) . '.',
+            ]);
+        }
+
+        return $allocations;
+    }
+
+    private static function moneyToCents(mixed $amount, string $field): int
+    {
+        $value = trim((string) $amount);
+
+        if (!preg_match('/^\d+(?:\.\d{1,2})?$/', $value)) {
+            throw ValidationException::withMessages([$field => 'Enter a valid amount with no more than two decimal places.']);
+        }
+
+        [$whole, $fraction] = array_pad(explode('.', $value, 2), 2, '');
+
+        return ((int) $whole * 100) + (int) str_pad($fraction, 2, '0');
+    }
+
+    private static function centsToMoney(int $cents): string
+    {
+        return number_format($cents / 100, 2, '.', '');
+    }
+
     private static function validateBuyerDetails(float $grandTotal, array $buyer): void
     {
         $threshold = (float) config('pos.invoice.buyer_pan_required_above', 10000);
@@ -484,7 +606,7 @@ class BillHelper
             ]);
         }
 
-        $bill->loadMissing('orders.orderDetails.menu.category', 'lockedBy');
+        $bill->loadMissing('orders.orderDetails.menu.category', 'lockedBy', 'payments');
         $business = app(BusinessConfigurationService::class)->details();
         $vatRate = app(VatCalculatorService::class)->vatRate();
         $items = $bill->orders
@@ -539,6 +661,11 @@ class BillHelper
             'vat' => $bill->vat_amount,
             'total_sales' => $bill->grand_total,
             'payment_method' => $bill->payment_method,
+            'payment_breakdown' => $bill->payments->map(fn ($payment) => [
+                'method' => $payment->payment_method,
+                'amount' => $payment->amount,
+                'reference_no' => $payment->reference_no,
+            ])->values()->all() ?: null,
             'operator_id' => $bill->locked_by,
             'operator_name' => $bill->lockedBy?->name ?? auth()->user()?->name ?? 'System',
         ];

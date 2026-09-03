@@ -8,9 +8,9 @@
         </h2>
     </x-slot>
 
-    <div class="py-6">
-        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
-            <div class="bg-white overflow-hidden shadow-xl sm:rounded-lg p-6">
+    <div class="max-w-full overflow-x-hidden py-6">
+        <div class="mx-auto min-w-0 max-w-7xl sm:px-6 lg:px-8">
+            <div class="min-w-0 max-w-full overflow-hidden bg-white p-3 shadow-xl sm:rounded-lg sm:p-6">
 
                 <div class="mb-6">
                     <x-search-by-date>
@@ -31,8 +31,8 @@
                     </x-search-by-date>
                 </div>
 
-                <div class="overflow-x-auto">
-                    <table id="bills-table" class="min-w-full">
+                <div class="max-w-full overflow-x-auto overscroll-x-contain">
+                    <table id="bills-table" class="w-full min-w-[40rem]">
                         <thead class="bg-gray-100">
                             <tr>
                                 <th
@@ -160,4 +160,14 @@
             return `${year}-${month < 10 ? '0' : ''}${month}-${day < 10 ? '0' : ''}${day}`;
         }
     </script>
+    <style>
+        #bills-table_wrapper {
+            max-width: 100%;
+        }
+
+        #bills-table_wrapper .dt-buttons {
+            display: flex;
+            flex-wrap: wrap;
+        }
+    </style>
 </x-master-layout>

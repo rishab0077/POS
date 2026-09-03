@@ -16,10 +16,10 @@
     <div class="flex flex-col min-h-screen">
 
         <header class="sticky top-0 z-50 w-full bg-[#1f2937] backdrop-blur-sm shadow-md">
-            <div class="container mx-auto px-4">
-                <div class="flex h-20 items-center justify-between">
+            <div class="mx-auto max-w-full overflow-x-auto px-2 sm:px-4">
+                <div class="flex h-20 min-w-max items-center justify-between gap-4">
 
-                    <div class="flex items-center gap-x-6">
+                    <div class="flex items-center gap-x-2 sm:gap-x-6">
                         <a href="{{ route('dashboard') }}" aria-label="{{ config('app.name', 'Restaurant POS') }} dashboard"
                             class="flex h-14 w-14 items-center justify-center rounded-xl border border-gray-500 bg-gray-700 text-center text-xs font-bold leading-tight text-white">
                             POS
@@ -33,7 +33,7 @@
                         </nav>
                     </div>
 
-                    <nav class="flex items-center gap-x-6">
+                    <nav class="flex shrink-0 items-center gap-x-1 sm:gap-x-3">
                         @if (auth()->user()->hasPermission(App\Enums\UserRole::Admin))
                             <x-pos-nav-link :href="route('pos.tables')" :active="request()->routeIs('pos.tables')">
                                 {{ __('Tables') }}

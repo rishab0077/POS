@@ -1,8 +1,8 @@
 # Restaurant POS — Living Project State
 
-Last updated: 2026-07-25
+Last updated: 2026-09-03
 
-This file is the shared handoff for the project. Every agent or chat that changes the repository must update it in the same task, as required by `AGENTS.md`.
+This file is the shared handoff for the project. Every agent or chat that implements a material repository change must update it in the same task, as required by `AGENTS.md`; plans must remain clearly separated from completed work.
 
 ## Product scope
 
@@ -21,7 +21,7 @@ This file is the shared handoff for the project. Every agent or chat that change
 - Production images exclude Node.js and npm and include the MariaDB backup client and MySQL 8 authentication connector required by `backup:database`.
 - `npm ci` and the production frontend build complete with zero reported npm vulnerabilities.
 - Production uses the database queue; the test profile uses the synchronous queue.
-- Automated verification currently passes: **130 tests, 684 assertions**.
+- Automated verification currently passes: **135 tests, 741 assertions**.
 
 ## Completed work
 
@@ -266,9 +266,40 @@ Key files:
 - `README.md`
 - `tests/Feature/LanDeploymentTest.php`
 
+### Split tender payments
+
+- Finalized non-credit bills now record immutable payment allocations in `bill_payments`; existing single-method bills keep their summary payment method and receive one allocation, while split bills use the `split` summary value and exactly two allocations.
+- Dine-in and immediate takeaway billing accept two distinct non-credit methods, calculate the second amount as the exact remainder, and validate positive amounts and exact cent equality again on the server inside the finalization transaction.
+- Selecting split tender initially fills an exact half-and-remainder allocation, includes active table orders in the payable total, and keeps both order-page and final-bill controls compact and vertically scrollable on shorter viewports.
+- Browser, PDF, and ESC/POS receipts, administrator bill details, CBMS return screens, audit events, and fiscal snapshots show or preserve the allocation breakdown and optional transaction references.
+- Daily payment reporting aggregates each allocation under its actual method and retains a compatibility fallback for historical or manually-created finalized bills without allocation rows.
+- Credit cannot be mixed into a split payment, and the POS records but does not initiate or verify card, wallet, transfer, or refund transactions.
+
+### Mobile POS and interface consistency
+
+- The phone POS now stacks menu selection and billing vertically instead of squeezing both desktop columns into the viewport; narrow children are allowed to shrink without widening the page.
+- POS navigation remains in a contained horizontal scroller on phones, keeping Tables, Bills, KOT View, and Dashboard reachable without widening the document.
+- Table dialogs use flex display, viewport-bounded height, and internal vertical scrolling; obsolete modal positioning rules no longer override the current Tailwind layout.
+- The Bills data table keeps its minimum readable width while containing horizontal scrolling inside the card.
+- Split method selectors prevent duplicate methods immediately, while server-side distinct-method validation remains authoritative.
+- A first split amount equal to or above the bill total remains visible and produces an explicit error instead of silently reverting to a half split.
+- Icon-only table actions now expose tooltips and accessible names, including Close Table.
+- User-facing currency labels across POS, billing, analytics, cart, and inventory views use `NPR` consistently.
+- The Add Notes dialog is viewport-bounded on phones, and each save replaces the in-memory note selection so reopening the dialog cannot duplicate notes.
+
+Key files:
+
+- `database/migrations/2026_09_03_000001_create_bill_payments.php`
+- `app/Models/BillPayment.php`
+- `app/Helpers/BillHelper.php`
+- `app/Http/Service/ReportingService.php`
+- `resources/views/pos/pos-index.blade.php`
+- `resources/views/pos/tables.blade.php`
+- `tests/Feature/SplitPaymentTest.php`
+
 ## Current readiness
 
-The core POS and the local CBMS sales-bill and partial/full credit-note outboxes are working and covered by automated tests. Internal receivable reversal, payment-refund records, net reporting, and waste-by-default returned-item handling are implemented. Phase 7A production-readiness and Phase 7B controlled-acceptance tooling are complete. The production deployment and same-origin kitchen realtime configuration have passed localhost and server-side LAN smoke testing. Phone testing still requires the target PC's Wi-Fi profile and scoped Windows Firewall rule to be configured from Administrator PowerShell. The live Phase 7B acceptance exercise still requires taxpayer credentials, IRD coordination, and operator verification in the IRD portal. The application is **not yet approved for live IRD CBMS use**, and no live acceptance test has been performed.
+The core POS, including exact two-method split tender payments, and the local CBMS sales-bill and partial/full credit-note outboxes are working and covered by automated tests. Internal receivable reversal, payment-refund records, net reporting, and waste-by-default returned-item handling are implemented. Phase 7A production-readiness and Phase 7B controlled-acceptance tooling are complete. The production deployment and same-origin kitchen realtime configuration have passed localhost and LAN smoke testing. An operator-provided diagnostic from the Amber POS installation confirmed the reserved LAN address, private network profile, scoped firewall rule, six healthy/running Compose services, HTTP health checks, current migrations, scheduler heartbeat, database backup, an online Windows print station, and its logon-triggered agent task. The live Phase 7B acceptance exercise still requires taxpayer credentials, IRD coordination, and operator verification in the IRD portal. The application is **not yet approved for live IRD CBMS use**, and no live acceptance test has been performed.
 
 CBMS remains off with `CBMS_ENABLED=false`. This allows normal local use and records finalized invoices as pending submissions without contacting IRD.
 
@@ -292,6 +323,7 @@ CBMS remains off with `CBMS_ENABLED=false`. This allows normal local use and rec
 - All current items are snapshotted as standard 13% VAT items. Per-item exempt or mixed-tax categories should be added only when a restaurant requires them.
 - The five-minute `isrealtime` cutoff is an implementation assumption because the published IRD API document does not define a cutoff. Confirm it with IRD before live activation.
 - Software enlistment/approval and restaurant-specific operational sign-off remain external compliance steps.
+- Split tender currently supports exactly two distinct non-credit methods. Mixed paid/credit tender, more than two allocations, and payment-provider integrations remain out of scope.
 
 ## Verification history
 
@@ -340,6 +372,20 @@ CBMS remains off with `CBMS_ENABLED=false`. This allows normal local use and rec
 - 2026-07-25: complete regression suite after repository cleanup — 130 passed, 684 assertions.
 - 2026-07-25: Composer manifest and lock validation passed after removing Laravel Sail; complete regression suite after legacy deployment cleanup — 130 passed, 684 assertions.
 - 2026-07-26: production LAN HTTP asset regression — 2 passed, 10 assertions; complete suite — 131 passed, 685 assertions.
+- 2026-09-03: documentation-only review verified the clean `local-lan-deployment` branch at revision `791d450`; no runtime tests were rerun because application code was unchanged.
+- 2026-09-03: split-payment focused suite — 3 passed, 30 assertions.
+- 2026-09-03: complete regression suite after split tender implementation — 134 passed, 715 assertions.
+- 2026-09-03: production frontend build completed successfully with `npm run build`.
+- 2026-09-03: production Docker images rebuilt successfully; an isolated preview database ran all migrations and seeders, all six services started, every Blade template compiled, and `/health` and `/login` returned HTTP 200 on port 8097.
+- 2026-09-03: the older `restaurant-pos_mysql_data` volume was left untouched because its stored database credentials no longer match the current `.env`; the running preview uses the separate `restaurant-pos-split-preview` volumes and is not a migration of that older data.
+- 2026-09-03: shared Docker storage ownership regression check — 9 passed, 35 assertions. Runtime inspection confirmed PHP-FPM workers, the queue worker, and the scheduler run as `www-data`; an application-user log write succeeded and `/health` returned HTTP 200.
+- 2026-09-03: live browser smoke test retried the previously failing table KOT submission successfully, returned to the table view without a JavaScript error dialog, and preserved the running NPR 140 order on table T2.
+- 2026-09-03: split-payment UI, billing hardening, and order-flow regression suite after the usability fixes — 11 passed, 81 assertions; complete regression suite — 135 passed, 727 assertions.
+- 2026-09-03: rebuilt the Vite assets and production `app`/`nginx` images, recreated the preview application services, and confirmed all six Compose services running with MySQL and Nginx healthy and no application errors in the final service-log sample.
+- 2026-09-03: live browser verification confirmed a NPR 140.00 bill auto-filled as NPR 70.00 plus NPR 70.00, the payment footer exposed its own vertical overflow inside the viewport, the final-bill modal was viewport-bounded and scrollable, and the browser console contained no errors.
+- 2026-09-03: mobile POS, modal, Bills overflow, split-input, accessibility, and currency hardening — focused suite 4 passed, 50 assertions; complete regression suite 135 passed, 737 assertions; `node --check resources/js/pos.js`, `git diff --check`, and the production Vite build passed.
+- 2026-09-03: the running port 8097 preview was inspected at a phone viewport but still serves the earlier image and does not contain this task's working-tree changes; final visual smoke testing remains required after redeployment.
+- 2026-09-03: approved Add Notes mobile overflow and duplicate-selection fixes — focused suite 4 passed, 54 assertions; complete regression suite 135 passed, 741 assertions; JavaScript syntax, production Vite build, and diff checks passed.
 
 ## Change log
 
@@ -380,3 +426,14 @@ CBMS remains off with `CBMS_ENABLED=false`. This allows normal local use and rec
 ### 2026-07-26
 
 - Removed the unconditional production HTTPS scheme override so LAN deployments using an HTTP `APP_URL` load compiled CSS and JavaScript correctly while HTTPS deployments continue to follow their configured URL and trusted proxy headers.
+
+### 2026-09-03
+
+- Added `docs/PROJECT_OVERVIEW_AND_SPLIT_PAYMENT_PLAN.md` with the current product, feature, readiness, deployment, compliance, and limitation summary plus a three-phase implementation plan for exact two-method split tender payments.
+- Tightened the repository workflow so future agents update project-state documentation after material implementations, while planned or documentation-only work remains explicitly separate from implemented functionality. Removed the unnecessary hourly state-recorder automation; state updates now happen within the implementation task.
+- Implemented immutable split-tender allocations for dine-in and takeaway finalization, exact server-side cent validation, historical single-payment backfill, fiscal snapshot hashing, receipt and administrator visibility, return guidance, allocation-based daily reporting, audit details, and focused regression coverage.
+- Rebuilt and smoke-tested the production stack against an isolated seeded preview database on port 8097. Preserved the inaccessible older database volume without migration or credential changes after its safety backup attempt was rejected by stale credentials.
+- Fixed shared-storage permission failures by retaining PHP-FPM's required root master with `www-data` workers while running queue and scheduler Artisan commands as `www-data`; added a production-image regression assertion and verified log writes in the live preview.
+- Hardened split-payment usability and adjacent billing paths: active table orders now contribute to the displayed payable total, selecting split auto-fills an exact half and remainder, compact payment panels scroll within the viewport, zero-value splits are disabled, cancel restores Cash, existing-table billing is reachable without adding another item, and high-value existing-table bills collect buyer details.
+- Fixed the eight reviewed mobile and payment-interface defects: responsive POS stacking, contained modal/navigation/Bills scrolling, immediate distinct-method enforcement, explicit split-overpayment errors, accessible table action labels, and consistent `NPR` currency labels.
+- After approval, made Add Notes viewport-safe on phones and replaced its saved selection on each save to prevent duplicate notes.

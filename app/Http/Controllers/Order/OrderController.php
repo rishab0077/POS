@@ -22,6 +22,7 @@ use App\Models\Table;
 use Exception;
 use Illuminate\Support\Facades\Log;
 use App\Services\PrintJobService;
+use App\Services\AuditLogger;
 use Illuminate\Validation\ValidationException;
 
 class OrderController extends Controller
@@ -38,7 +39,7 @@ class OrderController extends Controller
         $this->printJobService = $printJobService;
     }
 
-    public function submit(OrderSubmitRequest $request)
+    public function submit(OrderSubmitRequest $request, AuditLogger $audit)
     {
         $source = $request->source;
         $tableId = $request->tableId;
@@ -122,7 +123,7 @@ class OrderController extends Controller
         if ($isPickUpOrder) {
             // Create and finalize takeaway bills immediately.
             $billId = BillHelper::createPickUpBill($kot);
-            $bill = BillHelper::finalizeBill($billId, $paymentMethod, $buyerData, [], true);
+            $bill = BillHelper::finalizeBill($billId, $paymentMethod, $buyerData, [], true, $request->input('payments', []));
             $billId = $bill->id;
 
             if ($this->restaurantService->hasEnabledPrintStationFor('counter')) {
@@ -133,7 +134,7 @@ class OrderController extends Controller
         if ($isTableOrder && $billTable) {
 
             $billId = BillHelper::createTableBill($tableId);
-            $bill = BillHelper::finalizeBill($billId, $paymentMethod, $buyerData);
+            $bill = BillHelper::finalizeBill($billId, $paymentMethod, $buyerData, [], false, $request->input('payments', []));
             $billId = $bill->id;
             TableHelper::markTableAsFinalized($tableId);
 
@@ -141,6 +142,17 @@ class OrderController extends Controller
             if ($this->restaurantService->hasEnabledPrintStationFor('counter')) {
                 $this->printJobService->queueBillCopies($billId, $request->input('print_copies'));
             }
+        }
+
+        if ($billId !== null) {
+            $audit->record('bill_finalized', 'billing', [
+                'subject' => $bill,
+                'after' => $bill->only(['id', 'invoice_no', 'table_id', 'grand_total', 'payment_method', 'locked_at', 'locked_by']),
+                'metadata' => [
+                    'summary' => "Bill {$bill->invoice_no} finalized.",
+                    'payments' => $bill->payments->map->only(['payment_method', 'amount', 'reference_no'])->all(),
+                ],
+            ]);
         }
 
         if (

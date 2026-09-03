@@ -55,10 +55,10 @@
                                 <div class="text-xs text-gray-500">{{ $bill->credit_customer_contact }}</div>
                             </td>
                             <td class="p-3">{{ ($bill->locked_at ?: $bill->created_at)->format('Y-m-d') }}</td>
-                            <td class="p-3 text-right">Rs {{ number_format($bill->grand_total, 2) }}</td>
-                            <td class="p-3 text-right">Rs {{ number_format($bill->credit_paid_amount, 2) }}</td>
-                            <td class="p-3 text-right">Rs {{ number_format($bill->credit_returned_amount, 2) }}</td>
-                            <td class="p-3 text-right font-semibold">Rs {{ number_format($bill->creditBalance(), 2) }}</td>
+                            <td class="p-3 text-right">NPR {{ number_format($bill->grand_total, 2) }}</td>
+                            <td class="p-3 text-right">NPR {{ number_format($bill->credit_paid_amount, 2) }}</td>
+                            <td class="p-3 text-right">NPR {{ number_format($bill->credit_returned_amount, 2) }}</td>
+                            <td class="p-3 text-right font-semibold">NPR {{ number_format($bill->creditBalance(), 2) }}</td>
                             <td class="p-3">{{ ucfirst($bill->credit_status ?: 'open') }}</td>
                             <td class="p-3 min-w-72">
                                 @if ($bill->creditBalance() > 0 && auth()->user()->canSettleCredit())
@@ -85,7 +85,7 @@
                                         <div class="mt-2 space-y-2">
                                             @foreach ($bill->creditPayments->sortByDesc('paid_at') as $payment)
                                                 <div class="border-t pt-2 text-xs">
-                                                    <strong>Rs {{ number_format($payment->amount, 2) }}</strong>
+                                                    <strong>NPR {{ number_format($payment->amount, 2) }}</strong>
                                                     via {{ config('pos.payments.' . $payment->payment_method) ?? config('pos.legacy_payments.' . $payment->payment_method) ?? $payment->payment_method }}
                                                     on {{ $payment->paid_at->format('Y-m-d') }}
                                                     <div class="text-gray-500">{{ $payment->reference_no }} {{ $payment->recordedBy?->name ? '- ' . $payment->recordedBy->name : '' }}</div>

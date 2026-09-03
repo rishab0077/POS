@@ -17,6 +17,7 @@ class PDFHelper
 
         $bill = Bill::where('id', $id)
             ->with('table')
+            ->with('payments')
             ->with('orders')
             ->with('orders.orderDetails')
             ->with('orders.orderDetails.menu')

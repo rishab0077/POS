@@ -51,6 +51,7 @@ class PosController extends Controller
 
         // Initialize variables
         $table = null;
+        $existingOrderTotal = 0;
 
         if ($orderType === OrderType::DineIn) {
             $table = Table::find($tableId);
@@ -65,6 +66,12 @@ class PosController extends Controller
                     ->route('pos.tables')
                     ->with('warning', 'This table is finalized or unavailable and cannot accept more orders.');
             }
+
+            $existingOrderTotal = (float) data_get(
+                $this->billingGroupsForTables([$table->id]),
+                $table->id . '.total',
+                0
+            );
         }
 
         return view('pos.pos-index', compact(
@@ -72,7 +79,8 @@ class PosController extends Controller
             'predefinedNotes',
             'paymentTypes',
             'table',
-            'orderType'
+            'orderType',
+            'existingOrderTotal'
         ));
     }
 
@@ -110,10 +118,16 @@ class PosController extends Controller
     public function billTable(Request $request, AuditLogger $audit)
     {
         $tableId = $request->tableId;
+        $paymentMethods = array_keys(config('pos.payments'));
+        $directMethods = array_values(array_diff($paymentMethods, ['credit']));
         $request->validate([
             'billAction' => ['nullable', Rule::in(['summary', 'final'])],
             'billingSource' => ['nullable', 'string'],
-            'paymentType' => ['nullable', Rule::in(array_keys(config('pos.payments')))],
+            'paymentType' => ['nullable', Rule::in([...$paymentMethods, 'split'])],
+            'payments' => ['nullable', 'required_if:paymentType,split', 'array', 'size:2'],
+            'payments.*.method' => ['required', Rule::in($directMethods)],
+            'payments.*.amount' => ['required', 'regex:/^\d+(?:\.\d{1,2})?$/'],
+            'payments.*.reference_no' => ['nullable', 'string', 'max:100'],
             'print_copies' => ['nullable', Rule::in(['customer', 'both'])],
             'discount_type' => ['nullable', Rule::in(['amount', 'percentage'])],
             'discount_value' => ['nullable', 'numeric', 'min:0'],
@@ -194,7 +208,14 @@ class PosController extends Controller
 
         $paymentType = $request->paymentType ? $request->paymentType : 'cash';
         $discountData = $request->only(['discount_type', 'discount_value']);
-        $bill = BillHelper::finalizeBill($billId, $paymentType, $buyerData, $discountData);
+        $bill = BillHelper::finalizeBill(
+            $billId,
+            $paymentType,
+            $buyerData,
+            $discountData,
+            false,
+            $request->input('payments', [])
+        );
         $bill->load('orders');
 
         $audit->record('bill_finalized', 'billing', [
@@ -220,6 +241,7 @@ class PosController extends Controller
             'metadata' => [
                 'summary' => "Bill {$bill->invoice_no} finalized.",
                 'order_ids' => $bill->orders->pluck('id')->all(),
+                'payments' => $bill->payments->map->only(['payment_method', 'amount', 'reference_no'])->all(),
             ],
         ]);
 
