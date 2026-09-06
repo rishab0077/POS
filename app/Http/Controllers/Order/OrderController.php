@@ -50,6 +50,12 @@ class OrderController extends Controller
 
         $this->authorizeOrderSource($source);
 
+        if ($request->filled('loyalty_rewards') && ($source !== 'pos' || (!$isPickUpOrder && !$request->boolean('billTable')))) {
+            throw ValidationException::withMessages([
+                'loyalty_rewards' => 'Loyalty rewards can only be applied during final payment.',
+            ]);
+        }
+
         if (!$isPickUpOrder) {
             $table = Table::findOrFail($tableId);
 
@@ -60,7 +66,14 @@ class OrderController extends Controller
             }
         }
 
-        $order = $this->trustedOrder($request->input('order.orderItems', []), $source);
+        $order = $this->trustedOrder($request->input('order.orderItems', []));
+        if ($isPickUpOrder || $request->boolean('billTable')) {
+            $this->validateLoyaltyRewards(
+                $request->input('loyalty_rewards', []),
+                $order['orderItems'],
+                $isPickUpOrder ? null : (int) $tableId
+            );
+        }
         $buyerData = $request->only(['buyer_name', 'buyer_pan', 'buyer_address', 'credit_customer_name', 'credit_customer_contact']);
 
         // if pick up order then set isTableOrder to false
@@ -96,23 +109,6 @@ class OrderController extends Controller
 
         $kot = $response['data'];
 
-        $loyaltyItems = collect($order['orderItems'])->where('loyalty_reward_quantity', '>', 0);
-        if ($loyaltyItems->isNotEmpty()) {
-            $createdOrder = Order::where('KOT', $kot)->latest('id')->first();
-            $audit->record('loyalty_reward_applied', 'billing', [
-                'subject' => $createdOrder,
-                'metadata' => [
-                    'summary' => 'Physical stamp-card reward applied while creating the order.',
-                    'items' => $loyaltyItems->map(fn (array $item) => [
-                        'menu_id' => $item['id'],
-                        'item_name' => $item['name'],
-                        'quantity' => $item['loyalty_reward_quantity'],
-                        'original_unit_price' => $item['price'],
-                    ])->values()->all(),
-                ],
-            ]);
-        }
-
         // Table Marking
 
         if ($isTableOrder) {
@@ -140,7 +136,7 @@ class OrderController extends Controller
         if ($isPickUpOrder) {
             // Create and finalize takeaway bills immediately.
             $billId = BillHelper::createPickUpBill($kot);
-            $bill = BillHelper::finalizeBill($billId, $paymentMethod, $buyerData, [], true, $request->input('payments', []));
+            $bill = BillHelper::finalizeBill($billId, $paymentMethod, $buyerData, [], true, $request->input('payments', []), $request->input('loyalty_rewards', []));
             $billId = $bill->id;
 
             if ($this->restaurantService->hasEnabledPrintStationFor('counter')) {
@@ -151,7 +147,7 @@ class OrderController extends Controller
         if ($isTableOrder && $billTable) {
 
             $billId = BillHelper::createTableBill($tableId);
-            $bill = BillHelper::finalizeBill($billId, $paymentMethod, $buyerData, [], false, $request->input('payments', []));
+            $bill = BillHelper::finalizeBill($billId, $paymentMethod, $buyerData, [], false, $request->input('payments', []), $request->input('loyalty_rewards', []));
             $billId = $bill->id;
             TableHelper::markTableAsFinalized($tableId);
 
@@ -162,6 +158,7 @@ class OrderController extends Controller
         }
 
         if ($billId !== null) {
+            $bill->load('orders.orderDetails.menu');
             $audit->record('bill_finalized', 'billing', [
                 'subject' => $bill,
                 'after' => $bill->only(['id', 'invoice_no', 'table_id', 'grand_total', 'payment_method', 'locked_at', 'locked_by']),
@@ -170,6 +167,8 @@ class OrderController extends Controller
                     'payments' => $bill->payments->map->only(['payment_method', 'amount', 'reference_no'])->all(),
                 ],
             ]);
+
+            $this->auditLoyaltyRewards($bill, $audit);
         }
 
         if (
@@ -232,12 +231,10 @@ class OrderController extends Controller
         }
     }
 
-    private function trustedOrder(array $submittedItems, string $source): array
+    private function trustedOrder(array $submittedItems): array
     {
         $quantities = collect($submittedItems)
             ->mapWithKeys(fn (array $item) => [(int) $item['id'] => (int) $item['quantity']]);
-        $rewards = collect($submittedItems)
-            ->mapWithKeys(fn (array $item) => [(int) $item['id'] => (int) ($item['loyalty_reward_quantity'] ?? 0)]);
         $menus = Menu::with('category')->whereIn('id', $quantities->keys())->get()->keyBy('id');
 
         if ($menus->count() !== $quantities->count()) {
@@ -246,30 +243,16 @@ class OrderController extends Controller
             ]);
         }
 
-        $items = $quantities->map(function (int $quantity, int $menuId) use ($menus, $rewards, $source) {
+        $items = $quantities->map(function (int $quantity, int $menuId) use ($menus) {
             $menu = $menus->get($menuId);
             $price = round((float) $menu->price, 2);
-            $rewardQuantity = (int) $rewards->get($menuId, 0);
-
-            if ($rewardQuantity > $quantity) {
-                throw ValidationException::withMessages([
-                    'order.orderItems' => 'Loyalty reward quantity cannot exceed the ordered quantity.',
-                ]);
-            }
-
-            if ($rewardQuantity > 0 && ($source !== 'pos' || !$menu->category->contains('loyalty_eligible', true))) {
-                throw ValidationException::withMessages([
-                    'order.orderItems' => 'One or more items are not eligible for a loyalty reward.',
-                ]);
-            }
 
             return [
                 'id' => $menu->id,
                 'name' => $menu->name,
                 'quantity' => $quantity,
                 'price' => $price,
-                'total' => round($price * ($quantity - $rewardQuantity), 2),
-                'loyalty_reward_quantity' => $rewardQuantity,
+                'total' => round($price * $quantity, 2),
             ];
         })->values()->all();
 
@@ -281,6 +264,74 @@ class OrderController extends Controller
         ];
 
         return $trustedOrder;
+    }
+
+    private function validateLoyaltyRewards(array $rewards, array $newItems, ?int $tableId): void
+    {
+        if ($rewards === []) {
+            return;
+        }
+
+        $requested = collect($rewards)
+            ->mapWithKeys(fn (array $reward) => [(int) $reward['menu_id'] => (int) $reward['quantity']]);
+        $available = collect($newItems)
+            ->mapWithKeys(fn (array $item) => [(int) $item['id'] => (int) $item['quantity']]);
+
+        if ($tableId !== null) {
+            BillHelper::processTableBill($tableId)
+                ->load('orderDetails')
+                ->flatMap->orderDetails
+                ->each(function ($detail) use ($available) {
+                    $available->put(
+                        (int) $detail->menu_id,
+                        (int) $available->get((int) $detail->menu_id, 0) + (int) $detail->quantity
+                    );
+                });
+        }
+
+        $eligibleMenus = Menu::with('category')
+            ->whereIn('id', $requested->keys())
+            ->get()
+            ->keyBy('id');
+
+        foreach ($requested as $menuId => $quantity) {
+            $menu = $eligibleMenus->get($menuId);
+
+            if (!$menu?->category->contains('loyalty_eligible', true)) {
+                throw ValidationException::withMessages([
+                    'loyalty_rewards' => 'One or more selected items are not eligible for a loyalty reward.',
+                ]);
+            }
+
+            if ($quantity > (int) $available->get($menuId, 0)) {
+                throw ValidationException::withMessages([
+                    'loyalty_rewards' => 'Reward quantity cannot exceed the ordered quantity.',
+                ]);
+            }
+        }
+    }
+
+    private function auditLoyaltyRewards($bill, AuditLogger $audit): void
+    {
+        $items = $bill->orders->flatMap->orderDetails
+            ->where('loyalty_reward_quantity', '>', 0);
+
+        if ($items->isEmpty()) {
+            return;
+        }
+
+        $audit->record('loyalty_reward_applied', 'billing', [
+            'subject' => $bill,
+            'metadata' => [
+                'summary' => 'Physical stamp-card rewards applied during final payment.',
+                'items' => $items->map(fn ($item) => [
+                    'menu_id' => $item->menu_id,
+                    'item_name' => $item->menu?->name,
+                    'quantity' => (int) $item->loyalty_reward_quantity,
+                    'original_unit_price' => (float) $item->loyalty_original_unit_price,
+                ])->values()->all(),
+            ],
+        ]);
     }
 
     public function markAsServed(Request $request)

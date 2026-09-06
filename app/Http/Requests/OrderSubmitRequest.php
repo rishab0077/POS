@@ -39,6 +39,9 @@ class OrderSubmitRequest extends FormRequest
             'payments.*.amount' => ['required', 'regex:/^\d+(?:\.\d{1,2})?$/'],
             'payments.*.reference_no' => ['nullable', 'string', 'max:100'],
             'print_copies' => ['nullable', Rule::in(['customer', 'both'])],
+            'loyalty_rewards' => ['nullable', 'array'],
+            'loyalty_rewards.*.menu_id' => ['required', 'integer', 'distinct', 'exists:menus,id'],
+            'loyalty_rewards.*.quantity' => ['required', 'integer', 'min:1', 'max:999'],
             'credit_customer_name' => ['nullable', 'required_if:paymentMethod,credit', 'string', 'max:255'],
             'credit_customer_contact' => ['nullable', 'string', 'max:50'],
             'billTable' => ['required', Rule::in(['true', 'false', true, false, 1, 0, '1', '0'])],
@@ -46,7 +49,6 @@ class OrderSubmitRequest extends FormRequest
             'order.orderItems' => ['required', 'array', 'min:1'],
             'order.orderItems.*.id' => ['required', 'integer', 'distinct', 'exists:menus,id'],
             'order.orderItems.*.quantity' => ['required', 'integer', 'min:1', 'max:999'],
-            'order.orderItems.*.loyalty_reward_quantity' => ['nullable', 'integer', 'min:0', 'max:999'],
         ];
     }
 }

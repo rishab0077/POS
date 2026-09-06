@@ -9,6 +9,7 @@ use App\Models\Bill;
 use App\Models\BillOrder;
 use App\Models\FiscalInvoiceSnapshot;
 use App\Models\Order;
+use App\Models\OrderDetail;
 use App\Services\BusinessConfigurationService;
 use App\Services\CbmsService;
 use App\Services\NepalFiscalYearService;
@@ -214,10 +215,11 @@ class BillHelper
         array $buyerData = [],
         array $discountData = [],
         bool $closeBill = false,
-        array $payments = []
+        array $payments = [],
+        array $loyaltyRewards = []
     ): Bill
     {
-        return DB::transaction(function () use ($billId, $paymentMethod, $buyerData, $discountData, $closeBill, $payments) {
+        return DB::transaction(function () use ($billId, $paymentMethod, $buyerData, $discountData, $closeBill, $payments, $loyaltyRewards) {
             $bill = Bill::with('orders')->lockForUpdate()->findOrFail($billId);
 
             if ($bill->isLocked()) {
@@ -226,6 +228,8 @@ class BillHelper
                 ]);
             }
 
+            self::applyLoyaltyRewards($bill, $loyaltyRewards);
+            $bill->load('orders');
             $total = (float) $bill->orders->sum('total');
             $discountPayload = self::discountPayload($total, $discountData);
             $tax = app(VatCalculatorService::class)->calculate($total, (float) $discountPayload['discount']);
@@ -262,6 +266,60 @@ class BillHelper
 
             return $bill->load('payments');
         });
+    }
+
+    private static function applyLoyaltyRewards(Bill $bill, array $rewards): void
+    {
+        if ($rewards !== [] && !auth()->user()?->canUsePos()) {
+            throw ValidationException::withMessages([
+                'loyalty_rewards' => 'Only a POS cashier can apply loyalty rewards during final payment.',
+            ]);
+        }
+
+        $requested = collect($rewards)
+            ->mapWithKeys(fn (array $reward) => [(int) $reward['menu_id'] => (int) $reward['quantity']]);
+        $details = OrderDetail::with('menu.category')
+            ->whereIn('order_id', $bill->orders->pluck('id'))
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get();
+
+        foreach ($requested as $menuId => $quantity) {
+            $matching = $details->where('menu_id', $menuId);
+
+            if ($matching->isEmpty() || !$matching->first()?->menu?->category->contains('loyalty_eligible', true)) {
+                throw ValidationException::withMessages([
+                    'loyalty_rewards' => 'One or more selected items are not eligible for a loyalty reward.',
+                ]);
+            }
+
+            if ($quantity < 1 || $quantity > (int) $matching->sum('quantity')) {
+                throw ValidationException::withMessages([
+                    'loyalty_rewards' => 'Reward quantity cannot exceed the ordered quantity.',
+                ]);
+            }
+        }
+
+        $remaining = $requested->all();
+        foreach ($details as $detail) {
+            $rewardQuantity = min((int) ($remaining[$detail->menu_id] ?? 0), (int) $detail->quantity);
+            $remaining[$detail->menu_id] = (int) ($remaining[$detail->menu_id] ?? 0) - $rewardQuantity;
+            $detail->update([
+                'loyalty_reward_quantity' => $rewardQuantity,
+                'loyalty_original_unit_price' => $rewardQuantity > 0 ? $detail->unit_price : null,
+                'loyalty_redeemed_by' => $rewardQuantity > 0 ? auth()->id() : null,
+                'loyalty_redeemed_at' => $rewardQuantity > 0 ? now() : null,
+            ]);
+        }
+
+        foreach ($bill->orders as $order) {
+            $order->update([
+                'total' => round((float) $details->where('order_id', $order->id)->sum(
+                    fn (OrderDetail $detail) => (float) $detail->unit_price
+                        * ((int) $detail->quantity - (int) $detail->loyalty_reward_quantity)
+                ), 2),
+            ]);
+        }
     }
 
     public static function getBillOrders($billId)

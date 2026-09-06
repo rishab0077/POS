@@ -1,6 +1,6 @@
 # Restaurant POS — Living Project State
 
-Last updated: 2026-09-04
+Last updated: 2026-09-06
 
 This file is the shared handoff for the project. Every agent or chat that implements a material repository change must update it in the same task, as required by `AGENTS.md`; plans must remain clearly separated from completed work.
 
@@ -21,7 +21,7 @@ This file is the shared handoff for the project. Every agent or chat that implem
 - Production images exclude Node.js and npm and include the MariaDB backup client and MySQL 8 authentication connector required by `backup:database`.
 - `npm ci` and the production frontend build complete with zero reported npm vulnerabilities.
 - Production uses the database queue; the test profile uses the synchronous queue.
-- Automated verification currently passes: **139 tests, 774 assertions**.
+- Automated verification currently passes: **140 tests, 778 assertions**.
 
 ## Completed work
 
@@ -269,14 +269,16 @@ Key files:
 ### Physical stamp-card loyalty rewards
 
 - Administrators can mark a menu category as eligible for physical stamp-card rewards; existing categories default to ineligible, and a menu is eligible when any assigned category is eligible.
-- POS cashiers can redeem one eligible item unit per physically collected completed card, increment additional collected cards, or undo a redemption before finalization. Existing table orders and newly selected POS items are both supported.
-- The server independently validates menu eligibility and reward quantities and rejects forged zero-price requests, waiter-originated rewards, quantities above the ordered quantity, and changes to finalized bills.
+- The ordering/KOT flow only identifies eligible menu items; it does not redeem cards or change prices. Redemption is available only after the cashier opens Final Bill, before selecting or confirming payment.
+- POS cashiers can select one eligible item unit per physically collected completed card, confirm each card collection, increment additional cards, or undo a pending selection before finalization. Existing table orders and newly selected takeaway/table items are supported.
+- Pending selections stay in the browser until payment is finalized. Finalization applies the rewards and recalculates order, discount, tax, split-payment, bill, and receipt totals in one locked database transaction.
+- The server independently validates menu eligibility and reward quantities and rejects forged zero-price requests, waiter/order-time rewards, quantities above the ordered quantity, and changes to finalized bills. Invalid selections are also preflighted before a new immediate-bill order is inserted.
 - Kitchen and bar tickets retain the full prepared quantity. Inventory deduction also retains the full quantity even though rewarded units produce zero sales revenue.
 - Fiscal snapshots split mixed paid/reward quantities into paid lines and explicit `NPR 0.00` loyalty lines while preserving the original unit price, category, approving cashier, approval time, and proportional inventory-consumption snapshot.
 - Browser and ESC/POS receipts label the zero-price item as a loyalty reward and show its regular price. Bill details and the discount report expose redemption quantities and promotional value.
 - Item and category sales reports count all served quantities but exclude the rewarded units from sales revenue.
-- Release verification completed on 2026-09-06: focused loyalty coverage passed with 4 tests and 33 assertions; the complete suite passed with 139 tests and 774 assertions; `node --check resources/js/pos.js`, the Vite production build, and `git diff --check` passed.
-- The isolated `restaurant-pos-split-preview` stack was rebuilt with the loyalty release, ran the new migration, started all six services, reported healthy MySQL and Nginx containers, and returned `{"status":"ok"}` from `/health`. Amber still runs the split-only release; repeat the migration plus phone/thermal-printer smoke test before enabling loyalty there.
+- Release verification completed on 2026-09-06: focused payment-time loyalty coverage passed with 5 tests and 37 assertions; the complete suite passed with 140 tests and 778 assertions; JavaScript syntax, the Vite production build, Blade rendering through HTTP tests, and `git diff --check` passed.
+- The isolated `restaurant-pos-split-preview` stack was rebuilt with the payment-time loyalty flow, confirmed no pending migrations, started all six services, reported healthy MySQL and Nginx containers, and returned `{"status":"ok"}` from `/health`. Amber still runs the split-only release; repeat the migration plus phone/thermal-printer smoke test before enabling loyalty there.
 - CBMS remains disabled. During controlled acceptance, confirm with the restaurant's tax adviser/IRD that an item retained on the invoice at zero payable price is the accepted treatment for this physical-card promotion before enabling automatic delivery.
 
 Key files:
@@ -411,7 +413,7 @@ CBMS remains off with `CBMS_ENABLED=false`. This allows normal local use and rec
 - 2026-09-03: mobile POS, modal, Bills overflow, split-input, accessibility, and currency hardening — focused suite 4 passed, 50 assertions; complete regression suite 135 passed, 737 assertions; `node --check resources/js/pos.js`, `git diff --check`, and the production Vite build passed.
 - 2026-09-03: the running port 8097 preview was inspected at a phone viewport but still serves the earlier image and does not contain this task's working-tree changes; final visual smoke testing remains required after redeployment.
 - 2026-09-03: approved Add Notes mobile overflow and duplicate-selection fixes — focused suite 4 passed, 54 assertions; complete regression suite 135 passed, 741 assertions; JavaScript syntax, production Vite build, and diff checks passed.
-- 2026-09-06: loyalty release verification — focused suite 4 passed, 33 assertions; complete regression suite 139 passed, 774 assertions; JavaScript syntax, production Vite build, and diff checks passed.
+- 2026-09-06: corrected loyalty redemption to occur only in Final Bill immediately before payment; focused suite 5 passed, 37 assertions; complete regression suite 140 passed, 778 assertions; JavaScript syntax, production Vite/Blade builds, and diff checks passed.
 - 2026-09-06: rebuilt the production `app` and `nginx` images for the isolated `restaurant-pos-split-preview` stack, ran `2026_09_04_000001_add_physical_loyalty_rewards`, recreated the application services, confirmed all six services running with healthy MySQL and Nginx, and received HTTP 200 with `{"status":"ok"}` from `/health`.
 
 ## Change log
@@ -468,4 +470,5 @@ CBMS remains off with `CBMS_ENABLED=false`. This allows normal local use and rec
 ### 2026-09-06
 
 - Implemented category-controlled physical stamp-card loyalty redemption for new and existing POS orders, including cashier confirmation and undo, zero-price receipt lines, full KOT/BOT and inventory quantities, immutable fiscal/audit details, and promotional-value reporting.
-- Verified the loyalty release with focused and complete automated suites, frontend and JavaScript builds, and an isolated production Compose migration and health smoke test. Amber remains on the split-only release pending explicit loyalty deployment and phone/thermal-printer acceptance.
+- Moved redemption out of order entry and into Final Bill: the cashier collects and selects cards only immediately before payment, totals and split tender update before confirmation, and the server applies rewards transactionally during finalization.
+- Verified the corrected loyalty release with focused and complete automated suites, frontend, JavaScript, and Blade builds, and an isolated production Compose migration and health smoke test. Amber remains on the split-only release pending explicit loyalty deployment and phone/thermal-printer acceptance.

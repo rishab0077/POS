@@ -188,6 +188,12 @@
                         <select id="finalBillingSource" class="w-full border rounded p-2"></select>
                     </div>
 
+                    <div id="finalLoyaltySection" class="hidden rounded-lg border border-amber-300 bg-amber-50 p-3">
+                        <button type="button" id="showFinalLoyalty" class="w-full rounded bg-amber-500 px-3 py-2 font-semibold text-white">Redeem stamp card</button>
+                        <div id="finalLoyaltyItems" class="hidden mt-3 space-y-2"></div>
+                        <p id="finalLoyaltySummary" class="mt-2 text-xs font-semibold text-amber-900"></p>
+                    </div>
+
                     <div>
                         <label class="block text-sm font-semibold text-gray-700 mb-2">Payment Method</label>
                         <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -424,7 +430,13 @@
                 updateFinalSplitRemainder(isSplit);
             });
             $("#finalSplitAmount1, #finalDiscountValue").on("input", () => updateFinalSplitRemainder(false));
-            $("#finalDiscountType, #finalBillingSource").on("change", () => updateFinalSplitRemainder(false));
+            $("#finalDiscountType").on("change", () => updateFinalSplitRemainder(false));
+            $("#finalBillingSource").on("change", () => {
+                finalLoyaltySelections = {};
+                renderFinalLoyalty();
+                updateFinalSplitRemainder(false);
+            });
+            $("#showFinalLoyalty").on("click", () => $("#finalLoyaltyItems").toggleClass("hidden"));
             $("#finalSplitMethod1, #finalSplitMethod2").on("change", function() {
                 syncFinalSplitMethodOptions(this.id);
             });
@@ -641,6 +653,9 @@
             $("#buyerName, #buyerPan, #buyerAddress, #creditCustomerName, #creditCustomerContact").val("");
             $("#finalSplitAmount1, #finalSplitAmount2, #finalSplitReference1, #finalSplitReference2").val("");
             $("#finalSplitPaymentFields").addClass("hidden");
+            finalLoyaltySelections = {};
+            $("#finalLoyaltyItems").addClass("hidden");
+            renderFinalLoyalty();
             $("#finalBillModal").css("display", "flex");
         }
 
@@ -686,8 +701,74 @@
             };
         }
 
+        let finalLoyaltySelections = {};
+
+        function finalLoyaltyCandidates() {
+            const tableId = $("#finalBillTableId").val();
+            const billingSource = $("#finalBillingSource").val() || "all";
+            const group = billingGroupForTable(tableId);
+
+            if (billingSource !== "all") {
+                return (group.sources || []).find(item => String(item.id) === String(billingSource))?.loyalty_items || [];
+            }
+
+            return group.loyalty_items || [];
+        }
+
+        function finalLoyaltyValue() {
+            return finalLoyaltyCandidates().reduce((total, item) =>
+                total + Number(finalLoyaltySelections[item.menu_id] || 0) * Number(item.unit_price), 0);
+        }
+
+        function renderFinalLoyalty() {
+            const candidates = finalLoyaltyCandidates();
+            const container = $("#finalLoyaltyItems").empty();
+            $("#finalLoyaltySection").toggleClass("hidden", candidates.length === 0);
+
+            candidates.forEach(item => {
+                const selected = Math.min(Number(finalLoyaltySelections[item.menu_id] || 0), Number(item.quantity));
+                finalLoyaltySelections[item.menu_id] = selected;
+                container.append(`
+                    <div class="flex items-center justify-between gap-2 text-sm">
+                        <span class="min-w-0">${item.name} × ${item.quantity}<br><small>Regular price NPR ${Number(item.unit_price).toFixed(2)}</small></span>
+                        <div class="flex shrink-0 items-center gap-2">
+                            <button type="button" class="rounded bg-gray-200 px-3 py-1" onclick="changeFinalLoyalty(${item.menu_id}, -1)">−</button>
+                            <span class="w-5 text-center font-bold">${selected}</span>
+                            <button type="button" class="rounded bg-amber-500 px-3 py-1 text-white" onclick="changeFinalLoyalty(${item.menu_id}, 1)">+</button>
+                        </div>
+                    </div>`);
+            });
+
+            const cards = Object.values(finalLoyaltySelections).reduce((sum, quantity) => sum + Number(quantity), 0);
+            $("#finalLoyaltySummary").text(cards > 0
+                ? `${cards} completed card${cards === 1 ? "" : "s"} collected · Reward NPR ${finalLoyaltyValue().toFixed(2)}`
+                : "No stamp card applied.");
+        }
+
+        function changeFinalLoyalty(menuId, delta) {
+            const candidate = finalLoyaltyCandidates().find(item => Number(item.menu_id) === Number(menuId));
+            if (!candidate) return;
+            const current = Number(finalLoyaltySelections[menuId] || 0);
+            const next = Math.max(0, Math.min(current + delta, Number(candidate.quantity)));
+            if (next === current) return;
+            if (delta > 0 && !confirm("Confirm that one completed physical stamp card has been collected.")) return;
+            finalLoyaltySelections[menuId] = next;
+            renderFinalLoyalty();
+            updateFinalSplitRemainder(false);
+        }
+
+        function collectFinalLoyaltyRewards() {
+            return Object.entries(finalLoyaltySelections)
+                .filter(([, quantity]) => Number(quantity) > 0)
+                .map(([menuId, quantity]) => ({ menu_id: Number(menuId), quantity: Number(quantity) }));
+        }
+
+        function finalSubtotal(tableId, billingSource) {
+            return Math.max(selectedBillingSubtotal(tableId, billingSource) - finalLoyaltyValue(), 0);
+        }
+
         function discountAmountForTable(tableId, billingSource) {
-            const subtotal = selectedBillingSubtotal(tableId, billingSource);
+            const subtotal = finalSubtotal(tableId, billingSource);
             const discountType = $("#finalDiscountType").val();
             const discountValue = Number($("#finalDiscountValue").val() || 0);
 
@@ -701,7 +782,7 @@
         function finalPayableCents() {
             const tableId = $("#finalBillTableId").val();
             const billingSource = $("#finalBillingSource").val() || "all";
-            const subtotalCents = Math.max(Math.round(selectedBillingSubtotal(tableId, billingSource) * 100), 0);
+            const subtotalCents = Math.max(Math.round(finalSubtotal(tableId, billingSource) * 100), 0);
             const discountCents = Math.max(Math.min(Math.round(discountAmountForTable(tableId, billingSource) * 100), subtotalCents), 0);
             const afterDiscountCents = subtotalCents - discountCents;
             const serviceCents = serviceChargeEnabled
@@ -784,7 +865,7 @@
             const discountType = $("#finalDiscountType").val();
             const discountValue = Number($("#finalDiscountValue").val() || 0);
             const discountAmount = discountAmountForTable(tableId, billingSource);
-            const subtotal = selectedBillingSubtotal(tableId, billingSource);
+            const subtotal = finalSubtotal(tableId, billingSource);
             const totalAfterDiscount = Math.max(subtotal - discountAmount, 0);
             const buyerName = $("#buyerName").val().trim();
             const buyerPan = $("#buyerPan").val().trim();
@@ -836,6 +917,7 @@
                 billAction: "final",
                 paymentType,
                 payments,
+                loyalty_rewards: collectFinalLoyaltyRewards(),
                 print_copies: $("#finalPrintCopies").val() || "customer",
                 discount_type: discountType,
                 discount_value: discountValue,

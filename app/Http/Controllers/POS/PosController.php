@@ -53,7 +53,7 @@ class PosController extends Controller
         // Initialize variables
         $table = null;
         $existingOrderTotal = 0;
-        $existingLoyaltyItems = collect();
+        $existingLoyaltyCandidates = collect();
 
         if ($orderType === OrderType::DineIn) {
             $table = Table::find($tableId);
@@ -81,16 +81,21 @@ class PosController extends Controller
                     ->orWhereNotNull('printed_at');
             })->pluck('order_id');
 
-            $existingLoyaltyItems = OrderDetail::with(['menu.category', 'order'])
+            $existingLoyaltyCandidates = OrderDetail::with(['menu.category', 'order'])
                 ->whereHas('order', function ($query) use ($table, $finalizedOrderIds) {
                     $query->where('table_id', $table->id)
                         ->whereNotIn('status', [OrderStatus::Closed->value, OrderStatus::Cancelled->value])
                         ->whereNotIn('id', $finalizedOrderIds);
                 })
                 ->get()
-                ->filter(fn (OrderDetail $detail) => (int) $detail->loyalty_reward_quantity > 0
-                    || $detail->menu?->category->contains('loyalty_eligible', true))
-                ->values();
+                ->filter(fn (OrderDetail $detail) => $detail->menu?->category->contains('loyalty_eligible', true))
+                ->groupBy('menu_id')
+                ->map(fn ($items) => [
+                    'menu_id' => $items->first()->menu_id,
+                    'name' => $items->first()->menu?->name ?? 'Deleted menu item',
+                    'quantity' => (int) $items->sum('quantity'),
+                    'unit_price' => (float) $items->first()->unit_price,
+                ])->values();
         }
 
         return view('pos.pos-index', compact(
@@ -100,87 +105,9 @@ class PosController extends Controller
             'table',
             'orderType',
             'existingOrderTotal',
-            'existingLoyaltyItems'
+            'existingLoyaltyCandidates'
         ));
     }
-
-    public function updateLoyaltyReward(Request $request, OrderDetail $orderDetail, AuditLogger $audit)
-    {
-        $data = $request->validate([
-            'quantity' => ['required', 'integer', 'min:0', 'max:999'],
-        ]);
-
-        $before = (int) $orderDetail->loyalty_reward_quantity;
-
-        DB::transaction(function () use ($orderDetail, $data) {
-            $detail = OrderDetail::with(['menu.category', 'order'])->lockForUpdate()->findOrFail($orderDetail->id);
-            $quantity = (int) $data['quantity'];
-
-            if (!auth()->user()?->canUsePos()) {
-                abort(403, 'You are not allowed to apply loyalty rewards.');
-            }
-
-            if (!$detail->order || in_array($detail->order->status, [OrderStatus::Closed, OrderStatus::Cancelled], true)) {
-                throw ValidationException::withMessages(['quantity' => 'This order can no longer be changed.']);
-            }
-
-            $isFinalized = BillOrder::where('order_id', $detail->order_id)
-                ->whereHas('bill', fn ($query) => $query->where('status', 'closed')
-                    ->orWhereNotNull('locked_at')
-                    ->orWhereNotNull('printed_at'))
-                ->exists();
-
-            if ($isFinalized) {
-                throw ValidationException::withMessages(['quantity' => 'This bill has already been finalized.']);
-            }
-
-            if ($quantity > (int) $detail->quantity) {
-                throw ValidationException::withMessages(['quantity' => 'Reward quantity cannot exceed ordered quantity.']);
-            }
-
-            if ($quantity > (int) $detail->loyalty_reward_quantity
-                && !$detail->menu?->category->contains('loyalty_eligible', true)) {
-                throw ValidationException::withMessages(['quantity' => 'This item is not eligible for a loyalty reward.']);
-            }
-
-            $detail->update([
-                'loyalty_reward_quantity' => $quantity,
-                'loyalty_original_unit_price' => $quantity > 0 ? $detail->unit_price : null,
-                'loyalty_redeemed_by' => $quantity > 0 ? auth()->id() : null,
-                'loyalty_redeemed_at' => $quantity > 0 ? now() : null,
-            ]);
-
-            $detail->order->update([
-                'total' => round((float) $detail->order->orderDetails()->get()->sum(
-                    fn (OrderDetail $item) => (float) $item->unit_price
-                        * ((int) $item->quantity - (int) $item->loyalty_reward_quantity)
-                ), 2),
-            ]);
-        });
-
-        $updated = $orderDetail->fresh(['menu', 'order']);
-        if ((int) $updated->loyalty_reward_quantity !== $before) {
-            $audit->record($updated->loyalty_reward_quantity > $before ? 'loyalty_reward_applied' : 'loyalty_reward_removed', 'billing', [
-                'subject' => $updated,
-                'before' => ['loyalty_reward_quantity' => $before],
-                'after' => ['loyalty_reward_quantity' => (int) $updated->loyalty_reward_quantity],
-                'metadata' => [
-                    'summary' => 'Physical stamp-card reward quantity changed.',
-                    'order_id' => $updated->order_id,
-                    'menu_id' => $updated->menu_id,
-                    'item_name' => $updated->menu?->name,
-                    'original_unit_price' => $updated->loyalty_original_unit_price,
-                ],
-            ]);
-        }
-
-        return response()->json([
-            'status' => 'success',
-            'quantity' => (int) $updated->loyalty_reward_quantity,
-            'table_total' => (float) data_get($this->billingGroupsForTables([$updated->order->table_id]), $updated->order->table_id . '.total', 0),
-        ]);
-    }
-
 
     public function selectTable()
     {
@@ -229,6 +156,9 @@ class PosController extends Controller
             'discount_type' => ['nullable', Rule::in(['amount', 'percentage'])],
             'discount_value' => ['nullable', 'numeric', 'min:0'],
             'discount_reason' => ['nullable', 'string', 'max:255'],
+            'loyalty_rewards' => ['nullable', 'array'],
+            'loyalty_rewards.*.menu_id' => ['required', 'integer', 'distinct', 'exists:menus,id'],
+            'loyalty_rewards.*.quantity' => ['required', 'integer', 'min:1', 'max:999'],
         ]);
 
         $notes = $request->notes ? $request->notes : '';
@@ -311,9 +241,10 @@ class PosController extends Controller
             $buyerData,
             $discountData,
             false,
-            $request->input('payments', [])
+            $request->input('payments', []),
+            $request->input('loyalty_rewards', [])
         );
-        $bill->load('orders');
+        $bill->load('orders.orderDetails.menu');
 
         $audit->record('bill_finalized', 'billing', [
             'subject' => $bill,
@@ -347,6 +278,22 @@ class PosController extends Controller
                 'subject' => $bill,
                 'after' => $bill->only(['id', 'discount', 'discount_type', 'discount_value', 'discount_reason', 'discount_approved_by']),
                 'metadata' => ['summary' => "Discount applied to bill {$bill->invoice_no}."],
+            ]);
+        }
+
+        $loyaltyItems = $bill->orders->flatMap->orderDetails->where('loyalty_reward_quantity', '>', 0);
+        if ($loyaltyItems->isNotEmpty()) {
+            $audit->record('loyalty_reward_applied', 'billing', [
+                'subject' => $bill,
+                'metadata' => [
+                    'summary' => 'Physical stamp-card rewards applied during final payment.',
+                    'items' => $loyaltyItems->map(fn (OrderDetail $item) => [
+                        'menu_id' => $item->menu_id,
+                        'item_name' => $item->menu?->name,
+                        'quantity' => (int) $item->loyalty_reward_quantity,
+                        'original_unit_price' => (float) $item->loyalty_original_unit_price,
+                    ])->values()->all(),
+                ],
             ]);
         }
 
@@ -573,7 +520,7 @@ class PosController extends Controller
                 ->orWhereNotNull('printed_at');
         })->pluck('order_id');
 
-        $orders = Order::with(['table', 'sourceTable'])
+        $orders = Order::with(['table', 'sourceTable', 'orderDetails.menu.category'])
             ->whereIn('table_id', $tableIds)
             ->whereNotIn('status', [OrderStatus::Closed->value, OrderStatus::Cancelled->value])
             ->whereNotIn('id', $finalizedOrderIds)
@@ -594,16 +541,49 @@ class PosController extends Controller
                         'name' => $sourceName,
                         'total' => 0,
                         'orders' => 0,
+                        'loyalty_items' => [],
                     ];
                 }
 
                 $sourceGroups[$sourceTableId]['total'] += (float) $order->total;
                 $sourceGroups[$sourceTableId]['orders']++;
+
+                foreach ($order->orderDetails as $detail) {
+                    if (!$detail->menu?->category->contains('loyalty_eligible', true)) {
+                        continue;
+                    }
+
+                    $menuId = $detail->menu_id;
+                    if (!isset($sourceGroups[$sourceTableId]['loyalty_items'][$menuId])) {
+                        $sourceGroups[$sourceTableId]['loyalty_items'][$menuId] = [
+                            'menu_id' => $menuId,
+                            'name' => $detail->menu->name,
+                            'quantity' => 0,
+                            'unit_price' => (float) $detail->unit_price,
+                        ];
+                    }
+
+                    $sourceGroups[$sourceTableId]['loyalty_items'][$menuId]['quantity'] += (int) $detail->quantity;
+                }
             }
+
+            foreach ($sourceGroups as &$sourceGroup) {
+                $sourceGroup['loyalty_items'] = array_values($sourceGroup['loyalty_items']);
+            }
+            unset($sourceGroup);
 
             $groups[$tableId] = [
                 'total' => array_sum(array_column($sourceGroups, 'total')),
                 'sources' => array_values($sourceGroups),
+                'loyalty_items' => collect($sourceGroups)
+                    ->flatMap(fn (array $source) => $source['loyalty_items'])
+                    ->groupBy('menu_id')
+                    ->map(fn ($items) => [
+                        'menu_id' => $items->first()['menu_id'],
+                        'name' => $items->first()['name'],
+                        'quantity' => $items->sum('quantity'),
+                        'unit_price' => $items->first()['unit_price'],
+                    ])->values()->all(),
             ];
         }
 

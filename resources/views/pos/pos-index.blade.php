@@ -138,26 +138,21 @@
                 </div>
 
                 <div class="p-2 bg-gray-100 border-t border-gray-200 shrink-0 max-h-[46vh] overflow-y-auto overscroll-contain">
-                    @if ($existingLoyaltyItems->isNotEmpty())
-                        <div class="mb-3 rounded-lg border border-amber-300 bg-amber-50 p-3">
-                            <p class="font-semibold text-amber-950">Existing order loyalty rewards</p>
-                            <p class="mb-2 text-xs text-amber-800">One completed card redeems one item. Collect each physical card before adding a reward.</p>
-                            <div class="space-y-2">
-                                @foreach ($existingLoyaltyItems as $detail)
-                                    <div class="flex items-center justify-between gap-2 text-sm" data-existing-loyalty="{{ $detail->id }}">
-                                        <span class="min-w-0 truncate">{{ $detail->menu?->name ?? 'Deleted menu item' }} × {{ $detail->quantity }}</span>
-                                        <div class="flex shrink-0 items-center gap-2">
-                                            <button type="button" class="rounded bg-gray-200 px-2 py-1" aria-label="Remove one loyalty reward from {{ $detail->menu?->name }}"
-                                                onclick="changeExistingLoyalty({{ $detail->id }}, -1, {{ $detail->quantity }})">−</button>
-                                            <span class="w-5 text-center font-bold" data-loyalty-count>{{ $detail->loyalty_reward_quantity }}</span>
-                                            <button type="button" class="rounded bg-amber-500 px-2 py-1 text-white" aria-label="Redeem one {{ $detail->menu?->name }} loyalty reward"
-                                                onclick="changeExistingLoyalty({{ $detail->id }}, 1, {{ $detail->quantity }})">+</button>
-                                        </div>
-                                    </div>
-                                @endforeach
+                    <div id="final-payment-panel" class="hidden mb-2 rounded-lg border border-green-300 bg-white p-3">
+                        <div class="mb-3 flex items-center justify-between gap-3">
+                            <div>
+                                <h3 class="font-bold text-gray-900">Finalize Bill</h3>
+                                <p class="text-xs text-gray-600">Apply any collected stamp cards, then choose payment.</p>
                             </div>
+                            <button type="button" id="close-final-payment" class="rounded bg-gray-200 px-3 py-1 text-sm">Close</button>
                         </div>
-                    @endif
+
+                        <div id="checkout-loyalty-section" class="hidden mb-3 rounded-lg border border-amber-300 bg-amber-50 p-3">
+                            <button type="button" id="show-checkout-loyalty" class="w-full rounded bg-amber-500 px-3 py-2 font-semibold text-white">Redeem stamp card</button>
+                            <div id="checkout-loyalty-items" class="hidden mt-3 space-y-2"></div>
+                            <p id="checkout-loyalty-summary" class="mt-2 text-xs font-semibold text-amber-900"></p>
+                        </div>
+
                     <div id="payment-types" class="flex flex-wrap items-center justify-around gap-2 mb-2">
                         @foreach ($paymentTypes as $paymentValue => $paymentLabel)
                             <label
@@ -224,6 +219,7 @@
                                 </option>
                             @endif
                         </select>
+                    </div>
                     </div>
                     <div id="save-and-bill-options" class="grid grid-cols-3 gap-2">
                         <button
@@ -297,7 +293,7 @@
         const billTableUrl = "{{ route('pos.table.bill', [], false) }}";
         const indexUrl = "{{ route('pos.tables', [], false) }}";
         const settleTableUrl = "{{ route('pos.table.settle', [], false) }}";
-        const loyaltyUpdateUrl = "{{ route('pos.loyalty.update', ['orderDetail' => '__DETAIL__'], false) }}";
+        const existingLoyaltyCandidates = @json($existingLoyaltyCandidates);
         const buyerPanThreshold = {{ (float) config('pos.invoice.buyer_pan_required_above', 10000) }};
         const defaultPrintCopies = @json(config('pos.printing.receipt.default_copies', 'customer'));
         const vatRate = {{ (float) config('pos.tax.vat_rate', 13) }};

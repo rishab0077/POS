@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Enums\UserRole;
 use App\Http\Service\ReportingService;
-use App\Models\AuditEvent;
 use App\Models\Bill;
 use App\Models\Category;
 use App\Models\Menu;
@@ -44,7 +43,7 @@ class LoyaltyRewardTest extends TestCase
 
         $this->actingAs($cashier)
             ->withSession(['auth.mfa_passed' => true])
-            ->postJson(route('order.submit'), $this->orderPayload($menu, 2, 1, true))
+            ->postJson(route('order.submit'), $this->orderPayload($menu, 2, true, null, 1))
             ->assertOk();
 
         $order = Order::with('orderDetails')->firstOrFail();
@@ -81,34 +80,55 @@ class LoyaltyRewardTest extends TestCase
 
         $this->actingAs($cashier)
             ->withSession(['auth.mfa_passed' => true])
-            ->postJson(route('order.submit'), $this->orderPayload($menu, 1, 1, true))
+            ->postJson(route('order.submit'), $this->orderPayload($menu, 1, true, null, 1))
             ->assertUnprocessable()
-            ->assertJsonValidationErrors('order.orderItems');
+            ->assertJsonValidationErrors('loyalty_rewards');
 
         $this->assertDatabaseCount('orders', 0);
     }
 
-    public function test_cashier_can_apply_and_remove_rewards_from_an_existing_table_order(): void
+    public function test_table_order_is_not_redeemed_until_cashier_finalizes_payment(): void
     {
         [$cashier, $menu] = $this->loyaltyFixture();
         $table = Table::where('name', 'T1')->firstOrFail();
 
         $this->actingAs($cashier)
             ->withSession(['auth.mfa_passed' => true])
-            ->postJson(route('order.submit'), $this->orderPayload($menu, 2, 0, false, $table))
+            ->postJson(route('order.submit'), $this->orderPayload($menu, 2, false, $table))
             ->assertOk();
 
         $detail = OrderDetail::firstOrFail();
-        $this->postJson(route('pos.loyalty.update', $detail), ['quantity' => 1])
-            ->assertOk()
-            ->assertJsonPath('quantity', 1);
-        $this->assertSame((float) $menu->price, (float) $detail->order->fresh()->total);
-
-        $this->postJson(route('pos.loyalty.update', $detail), ['quantity' => 0])
-            ->assertOk()
-            ->assertJsonPath('quantity', 0);
+        $this->assertSame(0, (int) $detail->loyalty_reward_quantity);
         $this->assertSame((float) $menu->price * 2, (float) $detail->order->fresh()->total);
-        $this->assertSame(1, AuditEvent::where('event_type', 'loyalty_reward_removed')->count());
+        $this->assertDatabaseCount('bills', 0);
+
+        $this->postJson(route('pos.table.bill'), [
+            'tableId' => $table->id,
+            'billAction' => 'final',
+            'billingSource' => 'all',
+            'paymentType' => 'cash',
+            'loyalty_rewards' => [['menu_id' => $menu->id, 'quantity' => 1]],
+        ])->assertOk();
+
+        $this->assertSame(1, (int) $detail->fresh()->loyalty_reward_quantity);
+        $this->assertSame((float) $menu->price, (float) $detail->order->fresh()->total);
+        $this->assertDatabaseHas('audit_events', ['event_type' => 'loyalty_reward_applied']);
+    }
+
+    public function test_loyalty_cannot_be_applied_when_only_sending_an_order_to_kitchen(): void
+    {
+        [$cashier, $menu] = $this->loyaltyFixture();
+        $table = Table::where('name', 'T1')->firstOrFail();
+        $payload = $this->orderPayload($menu, 1, false, $table);
+        $payload['loyalty_rewards'] = [['menu_id' => $menu->id, 'quantity' => 1]];
+
+        $this->actingAs($cashier)
+            ->withSession(['auth.mfa_passed' => true])
+            ->postJson(route('order.submit'), $payload)
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('loyalty_rewards');
+
+        $this->assertDatabaseCount('orders', 0);
     }
 
     public function test_finalized_loyalty_reward_is_reported_with_original_value(): void
@@ -117,7 +137,7 @@ class LoyaltyRewardTest extends TestCase
 
         $this->actingAs($cashier)
             ->withSession(['auth.mfa_passed' => true])
-            ->postJson(route('order.submit'), $this->orderPayload($menu, 1, 1, true))
+            ->postJson(route('order.submit'), $this->orderPayload($menu, 1, true, null, 1))
             ->assertOk();
 
         $report = app(ReportingService::class)->discountReport(now()->toDateString(), now()->toDateString());
@@ -137,9 +157,9 @@ class LoyaltyRewardTest extends TestCase
         return [$cashier, $menu];
     }
 
-    private function orderPayload(Menu $menu, int $quantity, int $rewardQuantity, bool $takeaway, ?Table $table = null): array
+    private function orderPayload(Menu $menu, int $quantity, bool $takeaway, ?Table $table = null, int $rewardQuantity = 0): array
     {
-        return [
+        $payload = [
             'source' => 'pos',
             'tableId' => $table?->id,
             'specialInstructions' => [],
@@ -150,9 +170,17 @@ class LoyaltyRewardTest extends TestCase
                 'orderItems' => [[
                     'id' => $menu->id,
                     'quantity' => $quantity,
-                    'loyalty_reward_quantity' => $rewardQuantity,
                 ]],
             ],
         ];
+
+        if ($rewardQuantity > 0) {
+            $payload['loyalty_rewards'] = [[
+                'menu_id' => $menu->id,
+                'quantity' => $rewardQuantity,
+            ]];
+        }
+
+        return $payload;
     }
 }

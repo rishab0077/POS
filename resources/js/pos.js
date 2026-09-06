@@ -31,16 +31,11 @@ function renderOrderTable() {
         orderItemsBody.append(noitemsContainer);
     } else {
         orderItems.forEach((item) => {
-            const loyaltyControls = item.loyaltyEligible ? `
-                <div class="mt-1 flex items-center gap-1 text-xs">
-                    <button type="button" class="rounded bg-amber-500 px-2 py-1 text-white" onclick="redeemLoyalty(${item.id})">Redeem</button>
-                    ${item.loyaltyRewardQuantity > 0 ? `<button type="button" class="rounded bg-gray-200 px-2 py-1" onclick="undoLoyalty(${item.id})">Undo</button><span class="font-semibold text-amber-800">Free × ${item.loyaltyRewardQuantity}</span>` : ''}
-                </div>` : '';
             const tr = $(`
                             <tr>
                                 <td>
                                     <button class="del-item" onclick="delItem(${item.id})">X</button>
-                                    <span><span>${item.name}</span>${loyaltyControls}</span>
+                                    <span>${item.name}</span>
                                 </td>
                                 <td>
                                     <button class="qty-options remQty" onclick="remQty(${item.id})">-</button>
@@ -57,6 +52,9 @@ function renderOrderTable() {
 
     $("#item-count").text(count);
 
+    if (!$("#final-payment-panel").hasClass("hidden")) {
+        renderCheckoutLoyalty();
+    }
     calculateTotal();
     $("input[type='text']").val("");
     $(".menu-items button").show();
@@ -82,7 +80,6 @@ function addItemToOrder(menuId) {
             price: Number(menu.data("price")),
             total: Number(menu.data("price")),
             loyaltyEligible: Number(menu.data("loyaltyEligible")) === 1,
-            loyaltyRewardQuantity: 0,
         };
         orderItems.push(newItem);
     }
@@ -105,7 +102,6 @@ function remQty(menuId) {
     if (item) {
         if (item.quantity > 1) {
             item.quantity--;
-            item.loyaltyRewardQuantity = Math.min(item.loyaltyRewardQuantity, item.quantity);
             updateItemTotal(item);
         } else {
             // Remove the item if quantity becomes 0
@@ -123,58 +119,107 @@ function calculateTotal() {
     });
 
     const discount = Number($("#discount").text());
-    const grandtotal = Number(total - discount);
+    const rewardValue = typeof checkoutLoyaltyValue === "function" ? checkoutLoyaltyValue() : 0;
+    const grandtotal = Math.max(Number(total + existingTableOrderTotal - discount - rewardValue), 0);
 
-    $("#grandtotal").text(grandtotal);
+    $("#grandtotal").text(grandtotal.toFixed(2));
     $("#total").text(total.toFixed(2));
-    $("#billing-total").text((payableCents(total + existingTableOrderTotal) / 100).toFixed(2));
+    $("#billing-total").text((payableCents(grandtotal) / 100).toFixed(2));
     updateSplitAvailability();
     updateSplitRemainder(true);
 }
 
 function updateItemTotal(item) {
-    item.total = (item.quantity - item.loyaltyRewardQuantity) * item.price;
+    item.total = item.quantity * item.price;
 }
 
-function redeemLoyalty(menuId) {
-    const item = orderItems.find((candidate) => candidate.id === menuId);
-    if (!item || !item.loyaltyEligible || item.loyaltyRewardQuantity >= item.quantity) return;
-    if (!confirm("Confirm that one completed physical stamp card has been collected.")) return;
-    item.loyaltyRewardQuantity++;
-    updateItemTotal(item);
-    renderOrderTable();
-}
+let checkoutLoyaltySelections = {};
 
-function undoLoyalty(menuId) {
-    const item = orderItems.find((candidate) => candidate.id === menuId);
-    if (!item || item.loyaltyRewardQuantity <= 0) return;
-    item.loyaltyRewardQuantity--;
-    updateItemTotal(item);
-    renderOrderTable();
-}
+function checkoutLoyaltyCandidates() {
+    const candidates = {};
 
-function changeExistingLoyalty(detailId, delta, maximum) {
-    const row = $(`[data-existing-loyalty="${detailId}"]`);
-    const current = Number(row.find("[data-loyalty-count]").text());
-    const quantity = Math.max(0, Math.min(current + delta, maximum));
-    if (quantity === current) return;
-    if (delta > 0 && !confirm("Confirm that one completed physical stamp card has been collected.")) return;
-
-    $.ajax({
-        url: loyaltyUpdateUrl.replace("__DETAIL__", detailId),
-        type: "POST",
-        data: { quantity },
-        headers: { "X-CSRF-TOKEN": $('meta[name="csrf-token"]').attr("content") },
-        success: function (response) {
-            row.find("[data-loyalty-count]").text(response.quantity);
-            existingTableOrderTotal = Number(response.table_total);
-            $("#existing-order-total").text(existingTableOrderTotal.toFixed(2));
-            calculateTotal();
-        },
-        error: function (error) {
-            alert(billingErrorMessage(error, "Unable to update loyalty reward."));
-        },
+    [...existingLoyaltyCandidates, ...orderItems.filter((item) => item.loyaltyEligible).map((item) => ({
+        menu_id: item.id,
+        name: item.name,
+        quantity: item.quantity,
+        unit_price: item.price,
+    }))].forEach((item) => {
+        if (!candidates[item.menu_id]) {
+            candidates[item.menu_id] = { ...item, quantity: 0 };
+        }
+        candidates[item.menu_id].quantity += Number(item.quantity);
     });
+
+    return Object.values(candidates);
+}
+
+function checkoutLoyaltyValue() {
+    return checkoutLoyaltyCandidates().reduce((total, item) =>
+        total + Math.min(Number(checkoutLoyaltySelections[item.menu_id] || 0), Number(item.quantity)) * Number(item.unit_price), 0);
+}
+
+function renderCheckoutLoyalty() {
+    const candidates = checkoutLoyaltyCandidates();
+    const container = $("#checkout-loyalty-items");
+    const available = candidates.length > 0;
+    $("#checkout-loyalty-section").toggleClass("hidden", !available);
+    container.empty();
+
+    candidates.forEach((item) => {
+        const selected = Math.min(Number(checkoutLoyaltySelections[item.menu_id] || 0), Number(item.quantity));
+        checkoutLoyaltySelections[item.menu_id] = selected;
+        container.append(`
+            <div class="flex items-center justify-between gap-2 text-sm">
+                <span class="min-w-0">${item.name} × ${item.quantity}<br><small>Regular price NPR ${Number(item.unit_price).toFixed(2)}</small></span>
+                <div class="flex shrink-0 items-center gap-2">
+                    <button type="button" class="rounded bg-gray-200 px-3 py-1" onclick="changeCheckoutLoyalty(${item.menu_id}, -1)">−</button>
+                    <span class="w-5 text-center font-bold">${selected}</span>
+                    <button type="button" class="rounded bg-amber-500 px-3 py-1 text-white" onclick="changeCheckoutLoyalty(${item.menu_id}, 1)">+</button>
+                </div>
+            </div>`);
+    });
+
+    const cards = Object.values(checkoutLoyaltySelections).reduce((sum, quantity) => sum + Number(quantity), 0);
+    $("#checkout-loyalty-summary").text(cards > 0
+        ? `${cards} completed card${cards === 1 ? "" : "s"} collected · Reward NPR ${checkoutLoyaltyValue().toFixed(2)}`
+        : "No stamp card applied.");
+}
+
+function changeCheckoutLoyalty(menuId, delta) {
+    const candidate = checkoutLoyaltyCandidates().find((item) => Number(item.menu_id) === Number(menuId));
+    if (!candidate) return;
+    const current = Number(checkoutLoyaltySelections[menuId] || 0);
+    const next = Math.max(0, Math.min(current + delta, Number(candidate.quantity)));
+    if (next === current) return;
+    if (delta > 0 && !confirm("Confirm that one completed physical stamp card has been collected.")) return;
+    checkoutLoyaltySelections[menuId] = next;
+    renderCheckoutLoyalty();
+    calculateTotal();
+}
+
+function collectCheckoutLoyaltyRewards() {
+    return checkoutLoyaltyCandidates()
+        .map((item) => ({
+            menu_id: Number(item.menu_id),
+            quantity: Math.min(Number(checkoutLoyaltySelections[item.menu_id] || 0), Number(item.quantity)),
+        }))
+        .filter((reward) => reward.quantity > 0);
+}
+
+function openFinalPayment() {
+    checkoutLoyaltySelections = {};
+    renderCheckoutLoyalty();
+    $("#checkout-loyalty-items").addClass("hidden");
+    $("#final-payment-panel").removeClass("hidden");
+    $("#bill-order").html('<i class="fa fa-check"></i> Confirm');
+    calculateTotal();
+}
+
+function closeFinalPayment() {
+    checkoutLoyaltySelections = {};
+    $("#final-payment-panel").addClass("hidden");
+    $("#bill-order").html('<i class="fa fa-print"></i> Bill');
+    calculateTotal();
 }
 
 function payableCents(subtotal, discount = 0) {
@@ -510,6 +555,7 @@ function searchByName() {
 
 // Cancel Order
 $("#cancel-order").click(function () {
+    closeFinalPayment();
     orderItems.splice(0, orderItems.length);
     renderOrderTable();
     $("input[type='radio']").prop("checked", false);
@@ -572,33 +618,35 @@ document.getElementById("saveNotesBtn").addEventListener("click", function () {
 $("#bill-order").click(function (e) {
     e.preventDefault(); // Prevent default action
 
-    if (orderItems.length === 0) {
-        if (hasPrevOrders) {
-            billTable();
-        } else {
-            alert("No Items Selected");
-        }
+    if (orderItems.length === 0 && !hasPrevOrders) {
+        alert("No Items Selected");
         return;
     }
 
-    let printBill = true;
-    let hasNewOrders = orderItems.length > 0;
-    let isTableToBePaid = $("#settle-order").length > 0;
+    if ($("#final-payment-panel").hasClass("hidden")) {
+        openFinalPayment();
+        return;
+    }
 
-    if (hasNewOrders) {
-        saveOrder(printBill, false);
-    } else if (isTableToBePaid) {
-        printDuplicateBill();
-    } else {
+    if (orderItems.length > 0) {
+        saveOrder(true);
+    } else if (hasPrevOrders) {
         billTable();
     }
 });
+
+$("#show-checkout-loyalty").click(function () {
+    $("#checkout-loyalty-items").toggleClass("hidden");
+});
+
+$("#close-final-payment").click(closeFinalPayment);
 
 $("#kot-order").click(function () {
     if (orderItems.length === 0) {
         alert("No Items Selected");
         return;
     }
+    closeFinalPayment();
     saveOrder();
 });
 
@@ -656,6 +704,7 @@ function saveOrder(printBill = false) {
             isPickUpOrder: isPickUpOrder,
             paymentMethod: paymentMethod,
             payments,
+            loyalty_rewards: printBill ? collectCheckoutLoyaltyRewards() : [],
             print_copies: $("#print-copies").val() || defaultPrintCopies,
             billTable: billTable,
             order: order,
@@ -712,6 +761,7 @@ function billTable() {
             tableId: tableId,
             paymentType: paymentType,
             payments,
+            loyalty_rewards: collectCheckoutLoyaltyRewards(),
             print_copies: $("#print-copies").val() || defaultPrintCopies,
             ...buyerData,
             ...creditData,
