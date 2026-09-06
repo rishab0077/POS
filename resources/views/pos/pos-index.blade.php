@@ -51,11 +51,15 @@
                                 class="grid grid-cols-1 min-[420px]:grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5 gap-2 sm:gap-4">
                                 @foreach ($category->menus as $menu)
                                     <button
-                                        class="flex flex-col justify-center items-center text-center p-2 h-24 rounded-lg shadow-md bg-green-600 text-white font-semibold transition-transform transform hover:-translate-y-1 hover:shadow-lg"
+                                        class="relative flex flex-col justify-center items-center text-center p-2 h-24 rounded-lg shadow-md bg-green-600 text-white font-semibold transition-transform transform hover:-translate-y-1 hover:shadow-lg"
                                         id="{{ $menu->id }}" onclick="addItemToOrder({{ $menu->id }})"
-                                        data-price="{{ $menu->price }}" data-shortcode="{{ $menu->shortcode }}">
+                                        data-name="{{ $menu->name }}" data-price="{{ $menu->price }}" data-shortcode="{{ $menu->shortcode }}"
+                                        data-loyalty-eligible="{{ $menu->category->contains('loyalty_eligible', true) ? 1 : 0 }}">
                                         {{-- JS will auto-format this with <br> tags --}}
-                                        {{ $menu->name }}
+                                        <span data-menu-name>{{ $menu->name }}</span>
+                                        @if ($menu->category->contains('loyalty_eligible', true))
+                                            <span class="absolute right-1 top-1 rounded bg-amber-300 px-1 text-[10px] font-bold text-amber-950">LOYALTY</span>
+                                        @endif
                                     </button>
                                     @php $menuShortCuts[$menu->shortcode] = $menu->id; @endphp
                                 @endforeach
@@ -118,7 +122,7 @@
                             @if ($existingOrderTotal > 0)
                                 <tr class="text-sm text-gray-600">
                                     <td class="px-3 pt-2 text-left" colspan="2">Existing orders</td>
-                                    <td class="px-3 pt-2 text-right">NPR {{ number_format($existingOrderTotal, 2) }}</td>
+                                    <td class="px-3 pt-2 text-right">NPR <span id="existing-order-total">{{ number_format($existingOrderTotal, 2) }}</span></td>
                                 </tr>
                             @endif
                             <tr class="text-sm text-gray-600 {{ $existingOrderTotal > 0 ? '' : 'hidden' }}">
@@ -134,6 +138,26 @@
                 </div>
 
                 <div class="p-2 bg-gray-100 border-t border-gray-200 shrink-0 max-h-[46vh] overflow-y-auto overscroll-contain">
+                    @if ($existingLoyaltyItems->isNotEmpty())
+                        <div class="mb-3 rounded-lg border border-amber-300 bg-amber-50 p-3">
+                            <p class="font-semibold text-amber-950">Existing order loyalty rewards</p>
+                            <p class="mb-2 text-xs text-amber-800">One completed card redeems one item. Collect each physical card before adding a reward.</p>
+                            <div class="space-y-2">
+                                @foreach ($existingLoyaltyItems as $detail)
+                                    <div class="flex items-center justify-between gap-2 text-sm" data-existing-loyalty="{{ $detail->id }}">
+                                        <span class="min-w-0 truncate">{{ $detail->menu?->name ?? 'Deleted menu item' }} × {{ $detail->quantity }}</span>
+                                        <div class="flex shrink-0 items-center gap-2">
+                                            <button type="button" class="rounded bg-gray-200 px-2 py-1" aria-label="Remove one loyalty reward from {{ $detail->menu?->name }}"
+                                                onclick="changeExistingLoyalty({{ $detail->id }}, -1, {{ $detail->quantity }})">−</button>
+                                            <span class="w-5 text-center font-bold" data-loyalty-count>{{ $detail->loyalty_reward_quantity }}</span>
+                                            <button type="button" class="rounded bg-amber-500 px-2 py-1 text-white" aria-label="Redeem one {{ $detail->menu?->name }} loyalty reward"
+                                                onclick="changeExistingLoyalty({{ $detail->id }}, 1, {{ $detail->quantity }})">+</button>
+                                        </div>
+                                    </div>
+                                @endforeach
+                            </div>
+                        </div>
+                    @endif
                     <div id="payment-types" class="flex flex-wrap items-center justify-around gap-2 mb-2">
                         @foreach ($paymentTypes as $paymentValue => $paymentLabel)
                             <label
@@ -273,13 +297,14 @@
         const billTableUrl = "{{ route('pos.table.bill', [], false) }}";
         const indexUrl = "{{ route('pos.tables', [], false) }}";
         const settleTableUrl = "{{ route('pos.table.settle', [], false) }}";
+        const loyaltyUpdateUrl = "{{ route('pos.loyalty.update', ['orderDetail' => '__DETAIL__'], false) }}";
         const buyerPanThreshold = {{ (float) config('pos.invoice.buyer_pan_required_above', 10000) }};
         const defaultPrintCopies = @json(config('pos.printing.receipt.default_copies', 'customer'));
         const vatRate = {{ (float) config('pos.tax.vat_rate', 13) }};
         const vatInclusive = @json((bool) config('pos.tax.vat_inclusive', true));
         const serviceChargeEnabled = @json((bool) config('pos.tax.service_charge_enabled', false));
         const serviceChargeRate = {{ (float) config('pos.tax.service_charge_rate', 0) }};
-        const existingTableOrderTotal = {{ (float) $existingOrderTotal }};
+        let existingTableOrderTotal = {{ (float) $existingOrderTotal }};
     </script>
     <script src="{{ asset('js/pos.js') }}"></script>
     <style>

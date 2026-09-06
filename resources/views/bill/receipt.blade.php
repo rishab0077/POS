@@ -145,6 +145,11 @@
                         <td class="right">{{ number_format($details['price'], 2) }}</td>
                         <td class="right">{{ number_format($details['total'], 2) }}</td>
                     </tr>
+                    @if ($details['loyalty_reward'] ?? false)
+                        <tr>
+                            <td colspan="4" class="muted">Physical stamp-card reward · Regular price {{ $business['currency_symbol'] }} {{ number_format($details['original_price'], 2) }}</td>
+                        </tr>
+                    @endif
                 @endforeach
             </tbody>
         </table>

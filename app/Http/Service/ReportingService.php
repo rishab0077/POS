@@ -32,7 +32,7 @@ class ReportingService extends Service
             ->selectRaw('menus.name as menu')
             ->selectRaw('COALESCE(order_details.unit_price, menus.price) as price')
             ->selectRaw('SUM(order_details.quantity) as no_of_sales')
-            ->selectRaw('SUM(order_details.quantity * COALESCE(order_details.unit_price, menus.price)) as total_amount')
+            ->selectRaw('SUM((order_details.quantity - order_details.loyalty_reward_quantity) * COALESCE(order_details.unit_price, menus.price)) as total_amount')
             ->orderBy('no_of_sales', 'desc')
             ->get();
 
@@ -87,7 +87,7 @@ class ReportingService extends Service
                 ->whereBetween('bills.locked_at', [$startDate, $endDate])
                 ->groupBy('order_details.menu_id', 'order_details.unit_price', 'menus.price')
                 ->selectRaw('SUM(order_details.quantity) as no_of_sales')
-                ->selectRaw('SUM(order_details.quantity * COALESCE(order_details.unit_price, menus.price)) as total_amount')
+                ->selectRaw('SUM((order_details.quantity - order_details.loyalty_reward_quantity) * COALESCE(order_details.unit_price, menus.price)) as total_amount')
                 ->orderBy('no_of_sales', 'desc')
                 ->get();
 
@@ -280,16 +280,36 @@ class ReportingService extends Service
             ->values()
             ->all();
 
+        $loyaltyRedemptions = DB::table('fiscal_invoice_items')
+            ->join('fiscal_invoice_snapshots', 'fiscal_invoice_snapshots.id', '=', 'fiscal_invoice_items.fiscal_invoice_snapshot_id')
+            ->where('fiscal_invoice_items.pricing_reason', 'physical_stamp_card')
+            ->whereBetween('fiscal_invoice_snapshots.invoice_at', [$start, $end])
+            ->orderBy('fiscal_invoice_snapshots.invoice_at')
+            ->select([
+                'fiscal_invoice_snapshots.invoice_at',
+                'fiscal_invoice_snapshots.invoice_no',
+                'fiscal_invoice_items.item_name',
+                'fiscal_invoice_items.category_name',
+                'fiscal_invoice_items.quantity',
+                'fiscal_invoice_items.original_unit_price',
+                'fiscal_invoice_items.approved_by_name',
+            ])
+            ->get()
+            ->each(fn ($item) => $item->reward_value = round((float) $item->quantity * (float) $item->original_unit_price, 2));
+
         return [
             'start_date' => $start->toDateString(),
             'end_date' => $end->toDateString(),
             'bills' => $bills,
             'by_reason' => $byReason,
+            'loyalty_redemptions' => $loyaltyRedemptions,
             'totals' => [
                 'bill_count' => $bills->count(),
                 'discount_amount' => round((float) $bills->sum('discount'), 2),
                 'sales_before_discount' => round((float) $bills->sum('bill_amount'), 2),
                 'sales_after_discount' => round((float) $bills->sum('grand_total'), 2),
+                'loyalty_quantity' => (float) $loyaltyRedemptions->sum('quantity'),
+                'loyalty_value' => round((float) $loyaltyRedemptions->sum('reward_value'), 2),
             ],
         ];
     }

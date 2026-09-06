@@ -31,18 +31,23 @@ function renderOrderTable() {
         orderItemsBody.append(noitemsContainer);
     } else {
         orderItems.forEach((item) => {
+            const loyaltyControls = item.loyaltyEligible ? `
+                <div class="mt-1 flex items-center gap-1 text-xs">
+                    <button type="button" class="rounded bg-amber-500 px-2 py-1 text-white" onclick="redeemLoyalty(${item.id})">Redeem</button>
+                    ${item.loyaltyRewardQuantity > 0 ? `<button type="button" class="rounded bg-gray-200 px-2 py-1" onclick="undoLoyalty(${item.id})">Undo</button><span class="font-semibold text-amber-800">Free × ${item.loyaltyRewardQuantity}</span>` : ''}
+                </div>` : '';
             const tr = $(`
                             <tr>
                                 <td>
                                     <button class="del-item" onclick="delItem(${item.id})">X</button>
-                                    <span>${item.name}</span>
+                                    <span><span>${item.name}</span>${loyaltyControls}</span>
                                 </td>
                                 <td>
                                     <button class="qty-options remQty" onclick="remQty(${item.id})">-</button>
                                     <span id="qty">${item.quantity}</span>
                                     <button class="qty-options addQty" onclick="addQty(${item.id})">+</button>
                                 </td>
-                                <td>${item.total}</td>
+                                <td>${Number(item.total).toFixed(2)}</td>
                             </tr>
                         `);
             orderItemsBody.append(tr);
@@ -68,14 +73,16 @@ function addItemToOrder(menuId) {
 
     if (existingItem) {
         existingItem.quantity++;
-        existingItem.total = existingItem.quantity * existingItem.price;
+        updateItemTotal(existingItem);
     } else {
         const newItem = {
             id: menuId,
-            name: menu.text(),
+            name: menu.data("name") || menu.text().trim(),
             quantity: 1,
             price: Number(menu.data("price")),
             total: Number(menu.data("price")),
+            loyaltyEligible: Number(menu.data("loyaltyEligible")) === 1,
+            loyaltyRewardQuantity: 0,
         };
         orderItems.push(newItem);
     }
@@ -88,7 +95,7 @@ function addQty(menuId) {
     const item = orderItems.find((item) => item.id === menuId);
     if (item) {
         item.quantity++;
-        item.total = item.quantity * item.price;
+        updateItemTotal(item);
         renderOrderTable();
     }
 }
@@ -98,7 +105,8 @@ function remQty(menuId) {
     if (item) {
         if (item.quantity > 1) {
             item.quantity--;
-            item.total = item.quantity * item.price;
+            item.loyaltyRewardQuantity = Math.min(item.loyaltyRewardQuantity, item.quantity);
+            updateItemTotal(item);
         } else {
             // Remove the item if quantity becomes 0
             orderItems.splice(orderItems.indexOf(item), 1);
@@ -122,6 +130,51 @@ function calculateTotal() {
     $("#billing-total").text((payableCents(total + existingTableOrderTotal) / 100).toFixed(2));
     updateSplitAvailability();
     updateSplitRemainder(true);
+}
+
+function updateItemTotal(item) {
+    item.total = (item.quantity - item.loyaltyRewardQuantity) * item.price;
+}
+
+function redeemLoyalty(menuId) {
+    const item = orderItems.find((candidate) => candidate.id === menuId);
+    if (!item || !item.loyaltyEligible || item.loyaltyRewardQuantity >= item.quantity) return;
+    if (!confirm("Confirm that one completed physical stamp card has been collected.")) return;
+    item.loyaltyRewardQuantity++;
+    updateItemTotal(item);
+    renderOrderTable();
+}
+
+function undoLoyalty(menuId) {
+    const item = orderItems.find((candidate) => candidate.id === menuId);
+    if (!item || item.loyaltyRewardQuantity <= 0) return;
+    item.loyaltyRewardQuantity--;
+    updateItemTotal(item);
+    renderOrderTable();
+}
+
+function changeExistingLoyalty(detailId, delta, maximum) {
+    const row = $(`[data-existing-loyalty="${detailId}"]`);
+    const current = Number(row.find("[data-loyalty-count]").text());
+    const quantity = Math.max(0, Math.min(current + delta, maximum));
+    if (quantity === current) return;
+    if (delta > 0 && !confirm("Confirm that one completed physical stamp card has been collected.")) return;
+
+    $.ajax({
+        url: loyaltyUpdateUrl.replace("__DETAIL__", detailId),
+        type: "POST",
+        data: { quantity },
+        headers: { "X-CSRF-TOKEN": $('meta[name="csrf-token"]').attr("content") },
+        success: function (response) {
+            row.find("[data-loyalty-count]").text(response.quantity);
+            existingTableOrderTotal = Number(response.table_total);
+            $("#existing-order-total").text(existingTableOrderTotal.toFixed(2));
+            calculateTotal();
+        },
+        error: function (error) {
+            alert(billingErrorMessage(error, "Unable to update loyalty reward."));
+        },
+    });
 }
 
 function payableCents(subtotal, discount = 0) {
@@ -759,7 +812,7 @@ function printDuplicateBill() {
 // function to add <br> to menu names where there is a space after every two words
 // This is done to make sure that the menu names are displayed correctly in the POS
 function filterAllMenuNames() {
-    $(".menu-items button").each(function () {
+    $(".menu-items button [data-menu-name]").each(function () {
         var menuName = $(this).text();
         var filteredMenuName = menuName.replace(/(\w+)\s(\w+)\s/g, "$1 $2<br>");
         $(this).html(filteredMenuName);

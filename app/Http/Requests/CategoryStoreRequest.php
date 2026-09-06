@@ -33,6 +33,7 @@ class CategoryStoreRequest extends FormRequest
             ])],
             'image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048', 'dimensions:max_width=3000,max_height=3000'],
             'description' => ['nullable', 'string', 'max:2000'],
+            'loyalty_eligible' => ['nullable', 'boolean'],
         ];
     }
 }

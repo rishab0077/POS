@@ -34,6 +34,9 @@
                                     class="py-3 px-6 text-xs font-medium tracking-wider text-left text-gray-700 uppercase dark:text-gray-400">
                                     Print Destination
                                 </th>
+                                <th scope="col" class="py-3 px-6 text-xs font-medium tracking-wider text-left text-gray-700 uppercase dark:text-gray-400">
+                                    Loyalty
+                                </th>
                                 <th scope="col"
                                     class="py-3 px-6 text-xs font-medium tracking-wider text-left text-gray-700 uppercase dark:text-gray-400">
                                     Description
@@ -69,6 +72,11 @@
                                     <td
                                         class="py-4 px-6 text-sm font-medium text-gray-900 whitespace-nowrap dark:text-white">
                                         {{ ($category->print_destination ?? 'kot') === 'bot' ? 'BOT - Bar/Beverage' : 'KOT - Kitchen' }}
+                                    </td>
+                                    <td class="py-4 px-6 text-sm font-medium whitespace-nowrap">
+                                        <span class="rounded-full px-2 py-1 text-xs {{ $category->loyalty_eligible ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600' }}">
+                                            {{ $category->loyalty_eligible ? 'Eligible' : 'Not eligible' }}
+                                        </span>
                                     </td>
                                     <td
                                         class="py-4 px-6 text-sm font-medium text-gray-900 whitespace-nowrap dark:text-white">

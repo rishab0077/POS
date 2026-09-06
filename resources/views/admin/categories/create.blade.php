@@ -35,6 +35,17 @@
                                 <div class="text-sm text-red-400">{{ $message }}</div>
                             @enderror
                         </div>
+                        <div class="sm:col-span-6 pt-5">
+                            <label class="flex items-start gap-3">
+                                <input type="hidden" name="loyalty_eligible" value="0">
+                                <input type="checkbox" name="loyalty_eligible" value="1" @checked(old('loyalty_eligible'))
+                                    class="mt-1 h-4 w-4 rounded border-gray-400 text-green-700 focus:ring-green-600">
+                                <span>
+                                    <span class="block text-sm font-medium text-gray-700">Physical stamp-card reward</span>
+                                    <span class="block text-xs text-gray-500">Items in this category can be redeemed by the cashier for NPR 0.00 after collecting a completed card.</span>
+                                </span>
+                            </label>
+                        </div>
                         <div class="sm:col-span-6">
                             <label for="image" class="block text-sm font-medium text-gray-700"> Image </label>
                             <div class="mt-1">

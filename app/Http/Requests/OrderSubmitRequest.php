@@ -46,6 +46,7 @@ class OrderSubmitRequest extends FormRequest
             'order.orderItems' => ['required', 'array', 'min:1'],
             'order.orderItems.*.id' => ['required', 'integer', 'distinct', 'exists:menus,id'],
             'order.orderItems.*.quantity' => ['required', 'integer', 'min:1', 'max:999'],
+            'order.orderItems.*.loyalty_reward_quantity' => ['nullable', 'integer', 'min:0', 'max:999'],
         ];
     }
 }

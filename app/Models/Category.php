@@ -13,7 +13,11 @@ class Category extends Model
     public const PRINT_DESTINATION_KOT = 'kot';
     public const PRINT_DESTINATION_BOT = 'bot';
 
-    protected $fillable = ['name', 'print_destination', 'image', 'description', 'rank'];
+    protected $fillable = ['name', 'print_destination', 'loyalty_eligible', 'image', 'description', 'rank'];
+
+    protected $casts = [
+        'loyalty_eligible' => 'boolean',
+    ];
 
     public function menus()
     {

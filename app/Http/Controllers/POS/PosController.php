@@ -19,6 +19,7 @@ use Illuminate\Validation\Rule;
 use App\Services\PrintJobService;
 use App\Models\BillOrder;
 use App\Models\Order;
+use App\Models\OrderDetail;
 use Illuminate\Support\Facades\DB;
 use App\Services\RecentAuthenticationService;
 use App\Services\AuditLogger;
@@ -52,6 +53,7 @@ class PosController extends Controller
         // Initialize variables
         $table = null;
         $existingOrderTotal = 0;
+        $existingLoyaltyItems = collect();
 
         if ($orderType === OrderType::DineIn) {
             $table = Table::find($tableId);
@@ -72,6 +74,23 @@ class PosController extends Controller
                 $table->id . '.total',
                 0
             );
+
+            $finalizedOrderIds = BillOrder::whereHas('bill', function ($query) {
+                $query->where('status', 'closed')
+                    ->orWhereNotNull('locked_at')
+                    ->orWhereNotNull('printed_at');
+            })->pluck('order_id');
+
+            $existingLoyaltyItems = OrderDetail::with(['menu.category', 'order'])
+                ->whereHas('order', function ($query) use ($table, $finalizedOrderIds) {
+                    $query->where('table_id', $table->id)
+                        ->whereNotIn('status', [OrderStatus::Closed->value, OrderStatus::Cancelled->value])
+                        ->whereNotIn('id', $finalizedOrderIds);
+                })
+                ->get()
+                ->filter(fn (OrderDetail $detail) => (int) $detail->loyalty_reward_quantity > 0
+                    || $detail->menu?->category->contains('loyalty_eligible', true))
+                ->values();
         }
 
         return view('pos.pos-index', compact(
@@ -80,8 +99,86 @@ class PosController extends Controller
             'paymentTypes',
             'table',
             'orderType',
-            'existingOrderTotal'
+            'existingOrderTotal',
+            'existingLoyaltyItems'
         ));
+    }
+
+    public function updateLoyaltyReward(Request $request, OrderDetail $orderDetail, AuditLogger $audit)
+    {
+        $data = $request->validate([
+            'quantity' => ['required', 'integer', 'min:0', 'max:999'],
+        ]);
+
+        $before = (int) $orderDetail->loyalty_reward_quantity;
+
+        DB::transaction(function () use ($orderDetail, $data) {
+            $detail = OrderDetail::with(['menu.category', 'order'])->lockForUpdate()->findOrFail($orderDetail->id);
+            $quantity = (int) $data['quantity'];
+
+            if (!auth()->user()?->canUsePos()) {
+                abort(403, 'You are not allowed to apply loyalty rewards.');
+            }
+
+            if (!$detail->order || in_array($detail->order->status, [OrderStatus::Closed, OrderStatus::Cancelled], true)) {
+                throw ValidationException::withMessages(['quantity' => 'This order can no longer be changed.']);
+            }
+
+            $isFinalized = BillOrder::where('order_id', $detail->order_id)
+                ->whereHas('bill', fn ($query) => $query->where('status', 'closed')
+                    ->orWhereNotNull('locked_at')
+                    ->orWhereNotNull('printed_at'))
+                ->exists();
+
+            if ($isFinalized) {
+                throw ValidationException::withMessages(['quantity' => 'This bill has already been finalized.']);
+            }
+
+            if ($quantity > (int) $detail->quantity) {
+                throw ValidationException::withMessages(['quantity' => 'Reward quantity cannot exceed ordered quantity.']);
+            }
+
+            if ($quantity > (int) $detail->loyalty_reward_quantity
+                && !$detail->menu?->category->contains('loyalty_eligible', true)) {
+                throw ValidationException::withMessages(['quantity' => 'This item is not eligible for a loyalty reward.']);
+            }
+
+            $detail->update([
+                'loyalty_reward_quantity' => $quantity,
+                'loyalty_original_unit_price' => $quantity > 0 ? $detail->unit_price : null,
+                'loyalty_redeemed_by' => $quantity > 0 ? auth()->id() : null,
+                'loyalty_redeemed_at' => $quantity > 0 ? now() : null,
+            ]);
+
+            $detail->order->update([
+                'total' => round((float) $detail->order->orderDetails()->get()->sum(
+                    fn (OrderDetail $item) => (float) $item->unit_price
+                        * ((int) $item->quantity - (int) $item->loyalty_reward_quantity)
+                ), 2),
+            ]);
+        });
+
+        $updated = $orderDetail->fresh(['menu', 'order']);
+        if ((int) $updated->loyalty_reward_quantity !== $before) {
+            $audit->record($updated->loyalty_reward_quantity > $before ? 'loyalty_reward_applied' : 'loyalty_reward_removed', 'billing', [
+                'subject' => $updated,
+                'before' => ['loyalty_reward_quantity' => $before],
+                'after' => ['loyalty_reward_quantity' => (int) $updated->loyalty_reward_quantity],
+                'metadata' => [
+                    'summary' => 'Physical stamp-card reward quantity changed.',
+                    'order_id' => $updated->order_id,
+                    'menu_id' => $updated->menu_id,
+                    'item_name' => $updated->menu?->name,
+                    'original_unit_price' => $updated->loyalty_original_unit_price,
+                ],
+            ]);
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'quantity' => (int) $updated->loyalty_reward_quantity,
+            'table_total' => (float) data_get($this->billingGroupsForTables([$updated->order->table_id]), $updated->order->table_id . '.total', 0),
+        ]);
     }
 
 

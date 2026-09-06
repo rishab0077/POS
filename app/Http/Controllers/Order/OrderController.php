@@ -60,7 +60,7 @@ class OrderController extends Controller
             }
         }
 
-        $order = $this->trustedOrder($request->input('order.orderItems', []));
+        $order = $this->trustedOrder($request->input('order.orderItems', []), $source);
         $buyerData = $request->only(['buyer_name', 'buyer_pan', 'buyer_address', 'credit_customer_name', 'credit_customer_contact']);
 
         // if pick up order then set isTableOrder to false
@@ -95,6 +95,23 @@ class OrderController extends Controller
         }
 
         $kot = $response['data'];
+
+        $loyaltyItems = collect($order['orderItems'])->where('loyalty_reward_quantity', '>', 0);
+        if ($loyaltyItems->isNotEmpty()) {
+            $createdOrder = Order::where('KOT', $kot)->latest('id')->first();
+            $audit->record('loyalty_reward_applied', 'billing', [
+                'subject' => $createdOrder,
+                'metadata' => [
+                    'summary' => 'Physical stamp-card reward applied while creating the order.',
+                    'items' => $loyaltyItems->map(fn (array $item) => [
+                        'menu_id' => $item['id'],
+                        'item_name' => $item['name'],
+                        'quantity' => $item['loyalty_reward_quantity'],
+                        'original_unit_price' => $item['price'],
+                    ])->values()->all(),
+                ],
+            ]);
+        }
 
         // Table Marking
 
@@ -215,11 +232,13 @@ class OrderController extends Controller
         }
     }
 
-    private function trustedOrder(array $submittedItems): array
+    private function trustedOrder(array $submittedItems, string $source): array
     {
         $quantities = collect($submittedItems)
             ->mapWithKeys(fn (array $item) => [(int) $item['id'] => (int) $item['quantity']]);
-        $menus = Menu::whereIn('id', $quantities->keys())->get()->keyBy('id');
+        $rewards = collect($submittedItems)
+            ->mapWithKeys(fn (array $item) => [(int) $item['id'] => (int) ($item['loyalty_reward_quantity'] ?? 0)]);
+        $menus = Menu::with('category')->whereIn('id', $quantities->keys())->get()->keyBy('id');
 
         if ($menus->count() !== $quantities->count()) {
             throw ValidationException::withMessages([
@@ -227,16 +246,30 @@ class OrderController extends Controller
             ]);
         }
 
-        $items = $quantities->map(function (int $quantity, int $menuId) use ($menus) {
+        $items = $quantities->map(function (int $quantity, int $menuId) use ($menus, $rewards, $source) {
             $menu = $menus->get($menuId);
             $price = round((float) $menu->price, 2);
+            $rewardQuantity = (int) $rewards->get($menuId, 0);
+
+            if ($rewardQuantity > $quantity) {
+                throw ValidationException::withMessages([
+                    'order.orderItems' => 'Loyalty reward quantity cannot exceed the ordered quantity.',
+                ]);
+            }
+
+            if ($rewardQuantity > 0 && ($source !== 'pos' || !$menu->category->contains('loyalty_eligible', true))) {
+                throw ValidationException::withMessages([
+                    'order.orderItems' => 'One or more items are not eligible for a loyalty reward.',
+                ]);
+            }
 
             return [
                 'id' => $menu->id,
                 'name' => $menu->name,
                 'quantity' => $quantity,
                 'price' => $price,
-                'total' => round($price * $quantity, 2),
+                'total' => round($price * ($quantity - $rewardQuantity), 2),
+                'loyalty_reward_quantity' => $rewardQuantity,
             ];
         })->values()->all();
 

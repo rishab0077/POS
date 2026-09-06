@@ -14,10 +14,12 @@ class FiscalInvoiceItem extends Model
     protected $casts = [
         'quantity' => 'decimal:3',
         'unit_price' => 'decimal:2',
+        'original_unit_price' => 'decimal:2',
         'line_total' => 'decimal:2',
         'vat_rate' => 'decimal:3',
         'inventory_consumption' => 'array',
         'created_at' => 'datetime',
+        'approved_at' => 'datetime',
     ];
 
     protected static function booted(): void

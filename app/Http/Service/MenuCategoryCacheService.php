@@ -24,7 +24,7 @@ class MenuCategoryCacheService extends Service
 
     private static function refreshCategoriesWithMenus()
     {
-        return Category::with('menus')->orderBy('rank')->get();
+        return Category::with('menus.category')->orderBy('rank')->get();
     }
 
     // -------------------------------------------------------------------------------------------------------

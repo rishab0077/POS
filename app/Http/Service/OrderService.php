@@ -54,6 +54,10 @@ class OrderService extends Service
                     'menu_id' => $item["id"],
                     'quantity' => $item['quantity'],
                     'unit_price' => $item['price'],
+                    'loyalty_reward_quantity' => $item['loyalty_reward_quantity'] ?? 0,
+                    'loyalty_original_unit_price' => ($item['loyalty_reward_quantity'] ?? 0) > 0 ? $item['price'] : null,
+                    'loyalty_redeemed_by' => ($item['loyalty_reward_quantity'] ?? 0) > 0 ? auth()->id() : null,
+                    'loyalty_redeemed_at' => ($item['loyalty_reward_quantity'] ?? 0) > 0 ? now() : null,
                 ]);
 
                 $order->orderDetails()->save($orderDetail);

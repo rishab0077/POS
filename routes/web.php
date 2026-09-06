@@ -147,6 +147,7 @@ Route::middleware(['private.access', 'auth', 'biller', 'ensure.pos.configured'])
     Route::post('/table/submit-for-billing', [PosController::class, 'billTable'])->name('table.bill');
     Route::post('/table/settle', [PosController::class, 'settleTable'])->name('table.settle');
     Route::post('/table/transfer', [PosController::class, 'transferTable'])->name('table.transfer');
+    Route::post('/order-details/{orderDetail}/loyalty', [PosController::class, 'updateLoyaltyReward'])->name('loyalty.update');
     Route::get('/table/orders/{tableId}', [PosController::class, 'tableOrders'])->name('table.orders');
 });
 

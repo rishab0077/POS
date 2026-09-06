@@ -14,10 +14,16 @@ class OrderDetail extends Model
         'order_id',
         'quantity',
         'unit_price',
+        'loyalty_reward_quantity',
+        'loyalty_original_unit_price',
+        'loyalty_redeemed_by',
+        'loyalty_redeemed_at',
     ];
 
     protected $casts = [
         'unit_price' => 'decimal:2',
+        'loyalty_original_unit_price' => 'decimal:2',
+        'loyalty_redeemed_at' => 'datetime',
     ];
 
     public function order()
@@ -28,5 +34,10 @@ class OrderDetail extends Model
     public function menu()
     {
         return $this->belongsTo(Menu::class);
+    }
+
+    public function loyaltyRedeemedBy()
+    {
+        return $this->belongsTo(User::class, 'loyalty_redeemed_by');
     }
 }

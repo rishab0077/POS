@@ -176,6 +176,11 @@ class BillPrinter
             foreach (array_slice($nameLines, 1) as $nameLine) {
                 $this->printer->text($this->fit($nameLine, $nameWidth) . "\n");
             }
+
+            if ($details['loyalty_reward'] ?? false) {
+                $this->printer->text('Stamp-card reward; regular '
+                    . $this->currencySymbol . ' ' . $this->money($details['original_price']) . "\n");
+            }
         }
 
         $this->printDash();

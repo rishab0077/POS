@@ -122,7 +122,12 @@
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                                         <ul class="list-disc list-inside">
                                             @foreach ($order->orderDetails as $orderDetail)
-                                                <li>{{ $orderDetail->menu->name }} x {{ $orderDetail->quantity }}</li>
+                                                <li>
+                                                    {{ $orderDetail->menu->name }} x {{ $orderDetail->quantity }}
+                                                    @if ($orderDetail->loyalty_reward_quantity > 0)
+                                                        <span class="font-semibold text-amber-700">({{ $orderDetail->loyalty_reward_quantity }} loyalty reward)</span>
+                                                    @endif
+                                                </li>
                                             @endforeach
                                         </ul>
                                     </td>

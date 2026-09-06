@@ -66,6 +66,7 @@ class CategoryController extends Controller
         Category::create([
             'name' => $request->name,
             'print_destination' => $request->input('print_destination', Category::PRINT_DESTINATION_KOT),
+            'loyalty_eligible' => $request->boolean('loyalty_eligible'),
             'description' => $description,
             'image' => $image,
             'rank' => $rank
@@ -101,6 +102,7 @@ class CategoryController extends Controller
                 Category::PRINT_DESTINATION_BOT,
             ])],
             'description' => ['nullable', 'string', 'max:2000'],
+            'loyalty_eligible' => ['nullable', 'boolean'],
             'image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048', 'dimensions:max_width=3000,max_height=3000'],
         ]);
         $image = $category->image;
@@ -112,6 +114,7 @@ class CategoryController extends Controller
         $category->update([
             'name' => $request->name,
             'print_destination' => $request->input('print_destination', $category->print_destination ?: Category::PRINT_DESTINATION_KOT),
+            'loyalty_eligible' => $request->boolean('loyalty_eligible'),
             'description' => $request->description,
             'image' => $image
         ]);

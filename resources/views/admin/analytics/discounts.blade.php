@@ -5,7 +5,7 @@
         <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
             <div>
                 <h1 class="text-2xl font-semibold text-gray-900">Discount Report</h1>
-                <p class="text-sm text-gray-600">Finalized bills with discount approval details.</p>
+                <p class="text-sm text-gray-600">Finalized bills with discount approval and physical stamp-card reward details.</p>
             </div>
             <form method="GET" action="{{ route('reporting.discounts') }}" class="flex flex-wrap items-end gap-2">
                 <div>
@@ -36,6 +36,33 @@
                         <tr class="border-t"><td class="p-3">{{ $reason['label'] }}</td><td class="p-3 text-right">{{ $reason['count'] }}</td><td class="p-3 text-right font-semibold">NPR {{ number_format($reason['amount'], 2) }}</td></tr>
                     @empty
                         <tr><td colspan="3" class="p-4 text-center text-gray-500">No discounts in this period.</td></tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </section>
+
+        <section class="bg-white border rounded overflow-x-auto">
+            <div class="flex items-center justify-between gap-3 p-4 border-b">
+                <h2 class="font-semibold">Physical Stamp-card Rewards</h2>
+                <span class="text-sm text-gray-600">{{ number_format($report['totals']['loyalty_quantity'], 0) }} items · NPR {{ number_format($report['totals']['loyalty_value'], 2) }}</span>
+            </div>
+            <table class="min-w-full text-sm">
+                <thead class="bg-gray-100">
+                    <tr><th class="p-3 text-left">Date</th><th class="p-3 text-left">Invoice</th><th class="p-3 text-left">Item</th><th class="p-3 text-left">Category</th><th class="p-3 text-left">Cashier</th><th class="p-3 text-right">Qty</th><th class="p-3 text-right">Reward Value</th></tr>
+                </thead>
+                <tbody>
+                    @forelse ($report['loyalty_redemptions'] as $reward)
+                        <tr class="border-t">
+                            <td class="p-3">{{ \Carbon\Carbon::parse($reward->invoice_at)->format('Y-m-d') }}</td>
+                            <td class="p-3">{{ $reward->invoice_no }}</td>
+                            <td class="p-3">{{ $reward->item_name }}</td>
+                            <td class="p-3">{{ $reward->category_name ?: '-' }}</td>
+                            <td class="p-3">{{ $reward->approved_by_name ?: '-' }}</td>
+                            <td class="p-3 text-right">{{ number_format($reward->quantity, 0) }}</td>
+                            <td class="p-3 text-right font-semibold">NPR {{ number_format($reward->reward_value, 2) }}</td>
+                        </tr>
+                    @empty
+                        <tr><td colspan="7" class="p-4 text-center text-gray-500">No stamp-card rewards in this period.</td></tr>
                     @endforelse
                 </tbody>
             </table>

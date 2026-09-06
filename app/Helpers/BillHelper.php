@@ -279,12 +279,15 @@ class BillHelper
 
         if ($billDetails->fiscalSnapshot) {
             foreach ($billDetails->fiscalSnapshot->items as $item) {
+                $displayName = $item->item_name . ($item->pricing_reason === 'physical_stamp_card' ? ' (Loyalty Reward)' : '');
                 self::addOrderDetail(
                     $orderDetails,
-                    $item->item_name,
+                    $displayName,
                     (float) $item->quantity,
                     (float) $item->unit_price,
-                    (float) $item->line_total
+                    (float) $item->line_total,
+                    $item->pricing_reason === 'physical_stamp_card',
+                    $item->original_unit_price ? (float) $item->original_unit_price : null
                 );
             }
 
@@ -296,7 +299,24 @@ class BillHelper
                 $itemName = $orderDetail->menu?->name ?? 'Deleted menu item';
                 $quantity = $orderDetail->quantity;
                 $price = (float) ($orderDetail->unit_price ?? $orderDetail->menu?->price ?? 0);
-                self::addOrderDetail($orderDetails, $itemName, $quantity, $price, $quantity * $price);
+                $rewardQuantity = min((int) $orderDetail->loyalty_reward_quantity, (int) $quantity);
+                $paidQuantity = (int) $quantity - $rewardQuantity;
+
+                if ($paidQuantity > 0) {
+                    self::addOrderDetail($orderDetails, $itemName, $paidQuantity, $price, $paidQuantity * $price);
+                }
+
+                if ($rewardQuantity > 0) {
+                    self::addOrderDetail(
+                        $orderDetails,
+                        $itemName . ' (Loyalty Reward)',
+                        $rewardQuantity,
+                        0,
+                        0,
+                        true,
+                        (float) ($orderDetail->loyalty_original_unit_price ?? $price)
+                    );
+                }
             }
         }
 
@@ -606,26 +626,60 @@ class BillHelper
             ]);
         }
 
-        $bill->loadMissing('orders.orderDetails.menu.category', 'lockedBy', 'payments');
+        $bill->loadMissing('orders.orderDetails.menu.category', 'orders.orderDetails.loyaltyRedeemedBy', 'lockedBy', 'payments');
         $business = app(BusinessConfigurationService::class)->details();
         $vatRate = app(VatCalculatorService::class)->vatRate();
         $items = $bill->orders
             ->flatMap->orderDetails
-            ->map(function ($detail) use ($vatRate, $inventoryConsumption) {
+            ->flatMap(function ($detail) use ($vatRate, $inventoryConsumption) {
                 $quantity = (float) $detail->quantity;
                 $unitPrice = (float) ($detail->unit_price ?? $detail->menu?->price ?? 0);
+                $rewardQuantity = min((float) $detail->loyalty_reward_quantity, $quantity);
+                $paidQuantity = $quantity - $rewardQuantity;
+                $categoryName = $detail->menu?->category->firstWhere('loyalty_eligible', true)?->name
+                    ?? $detail->menu?->category->pluck('name')->sort()->first();
+                $fullConsumption = collect($inventoryConsumption[$detail->id] ?? []);
+                $paidConsumption = $fullConsumption->map(function (array $stock) use ($paidQuantity, $quantity) {
+                    $stock['quantity'] = round((float) $stock['quantity'] * $paidQuantity / $quantity, 3);
+                    return $stock;
+                })->filter(fn (array $stock) => $stock['quantity'] > 0)->values();
+                $rewardConsumption = $fullConsumption->map(function (array $stock, int $index) use ($paidConsumption) {
+                    $stock['quantity'] = round((float) $stock['quantity'] - (float) data_get($paidConsumption->get($index), 'quantity', 0), 3);
+                    return $stock;
+                })->filter(fn (array $stock) => $stock['quantity'] > 0)->values()->all();
 
-                return [
+                $common = [
                     'source_order_detail_id' => $detail->id,
                     'item_name' => $detail->menu?->name ?? 'Deleted menu item',
-                    'category_name' => $detail->menu?->category->pluck('name')->sort()->first(),
-                    'inventory_consumption' => $inventoryConsumption[$detail->id] ?? null,
-                    'quantity' => $quantity,
+                    'category_name' => $categoryName,
                     'unit_price' => round($unitPrice, 2),
-                    'line_total' => round($quantity * $unitPrice, 2),
                     'tax_category' => 'standard',
                     'vat_rate' => $vatRate,
                 ];
+
+                $items = [];
+                if ($paidQuantity > 0) {
+                    $items[] = array_merge($common, [
+                        'inventory_consumption' => $paidConsumption->all() ?: null,
+                        'quantity' => $paidQuantity,
+                        'line_total' => round($paidQuantity * $unitPrice, 2),
+                    ]);
+                }
+
+                if ($rewardQuantity > 0) {
+                    $items[] = array_merge($common, [
+                        'inventory_consumption' => $rewardConsumption ?: null,
+                        'quantity' => $rewardQuantity,
+                        'unit_price' => 0,
+                        'original_unit_price' => round((float) ($detail->loyalty_original_unit_price ?? $unitPrice), 2),
+                        'pricing_reason' => 'physical_stamp_card',
+                        'approved_by_name' => $detail->loyaltyRedeemedBy?->name ?? 'System',
+                        'approved_at' => $detail->loyalty_redeemed_at,
+                        'line_total' => 0,
+                    ]);
+                }
+
+                return $items;
             })
             ->values()
             ->all();
@@ -680,7 +734,15 @@ class BillHelper
         app(CbmsService::class)->queue($fiscalSnapshot);
     }
 
-    private static function addOrderDetail($orderDetails, string $itemName, float $quantity, float $price, float $total): void
+    private static function addOrderDetail(
+        $orderDetails,
+        string $itemName,
+        float $quantity,
+        float $price,
+        float $total,
+        bool $loyaltyReward = false,
+        ?float $originalPrice = null
+    ): void
     {
         if ($orderDetails->has($itemName)) {
             $current = $orderDetails->get($itemName);
@@ -695,6 +757,8 @@ class BillHelper
             'quantity' => $quantity,
             'price' => $price,
             'total' => $total,
+            'loyalty_reward' => $loyaltyReward,
+            'original_price' => $originalPrice,
         ]);
     }
 
