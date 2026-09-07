@@ -268,11 +268,47 @@ class BillHelper
         });
     }
 
+    public static function updateLoyaltyRewardsForPreview(int $billId, array $rewards): Bill
+    {
+        return DB::transaction(function () use ($billId, $rewards) {
+            $bill = Bill::with('orders')->lockForUpdate()->findOrFail($billId);
+
+            if ($bill->isLocked()) {
+                throw ValidationException::withMessages([
+                    'bill' => 'This bill has already been finalized and cannot be edited.',
+                ]);
+            }
+
+            if (!auth()->user()?->canUsePos()) {
+                throw ValidationException::withMessages([
+                    'loyalty_rewards' => 'Only a POS cashier can prepare loyalty rewards.',
+                ]);
+            }
+
+            self::applyLoyaltyRewards($bill, $rewards);
+            $bill->load('orders');
+            $total = (float) $bill->orders->sum('total');
+            $tax = app(VatCalculatorService::class)->calculate($total, 0);
+            $bill->update([
+                'bill_amount' => $total,
+                'discount' => 0,
+                'discount_type' => null,
+                'discount_value' => 0,
+                'taxable_amount' => $tax['taxable_amount'],
+                'vat_amount' => $tax['vat_amount'],
+                'service_charge_amount' => $tax['service_charge_amount'],
+                'grand_total' => $tax['grand_total'],
+            ]);
+
+            return $bill->refresh();
+        });
+    }
+
     private static function applyLoyaltyRewards(Bill $bill, array $rewards): void
     {
         if ($rewards !== [] && !auth()->user()?->canUsePos()) {
             throw ValidationException::withMessages([
-                'loyalty_rewards' => 'Only a POS cashier can apply loyalty rewards during final payment.',
+                'loyalty_rewards' => 'Only a POS cashier can apply loyalty rewards during bill review or final payment.',
             ]);
         }
 

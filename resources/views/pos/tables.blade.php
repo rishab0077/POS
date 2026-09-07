@@ -73,7 +73,7 @@
                                     @endif
                                     <div id="printTableBtn">
                                         <button onclick="event.stopPropagation(); triggerSummaryBill({{ $table->id }})"
-                                            class="action-btn" title="Print summary" aria-label="Print summary">
+                                            class="action-btn" title="Bill preview" aria-label="Open unpaid bill preview">
                                             <i class="fas fa-receipt"></i>
                                         </button>
                                     </div>
@@ -125,22 +125,37 @@
             <div class="modal-overlay fixed inset-0" data-close="summaryBillModal"></div>
             <div class="modal-container relative m-2 max-h-[calc(100vh-1rem)] w-full max-w-sm overflow-y-auto rounded-xl bg-white p-4 shadow-2xl sm:p-6">
                 <div class="modal-header flex justify-between items-center mb-4">
-                    <h3 class="text-xl font-semibold text-gray-800">Summary Bill</h3>
+                    <div>
+                        <h3 class="text-xl font-semibold text-gray-800">Bill Preview</h3>
+                        <p class="text-xs font-semibold text-amber-700">UNPAID — NOT A TAX INVOICE</p>
+                    </div>
                     <button data-close="summaryBillModal" class="text-gray-400 hover:text-gray-600" aria-label="Close dialog">&times;</button>
                 </div>
-                <div class="modal-body space-y-3">
+                <div class="modal-body space-y-4">
                     <input type="hidden" id="summaryBillTableId" value="0">
                     <div>
                         <label for="summaryBillingSource" class="block text-sm font-semibold text-gray-700 mb-2">Orders</label>
                         <select id="summaryBillingSource" class="w-full border rounded p-2"></select>
                     </div>
+                    <div id="summaryLoyaltySection" class="hidden rounded-lg border border-amber-300 bg-amber-50 p-3">
+                        <p class="font-semibold text-amber-950">Redeem loyalty card</p>
+                        <p class="mb-3 text-xs text-amber-800">Select the free item after collecting the completed physical card.</p>
+                        <div id="summaryLoyaltyItems" class="space-y-2"></div>
+                    </div>
+                    <div class="rounded-lg bg-gray-50 p-3 text-sm">
+                        <div class="flex justify-between"><span>Regular subtotal</span><strong id="summaryRegularTotal">NPR 0.00</strong></div>
+                        <div class="flex justify-between text-amber-800"><span>Loyalty reward</span><strong id="summaryLoyaltyValue">− NPR 0.00</strong></div>
+                        <div class="mt-2 flex justify-between border-t pt-2 text-base"><span>Preview total</span><strong id="summaryPreviewTotal">NPR 0.00</strong></div>
+                    </div>
                 </div>
-                <div class="modal-footer mt-6 flex justify-end gap-3">
+                <div class="modal-footer mt-6 grid grid-cols-1 gap-2 sm:grid-cols-3">
                     <button type="button"
                         class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-semibold"
                         data-close="summaryBillModal">Cancel</button>
+                    <button type="button" id="continueSummaryToPayment"
+                        class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold">Proceed to Payment</button>
                     <button type="button" id="saveSummaryBillBtn"
-                        class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-semibold">Print Summary</button>
+                        class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-semibold">Print Preview</button>
                 </div>
             </div>
         </div>
@@ -421,6 +436,7 @@
             $('[data-close="billPreviewModal"]').on("click", closeBillPreview);
             $("#savePaymentDataBtn").on("click", handlePayment);
             $("#saveSummaryBillBtn").on("click", handleSummaryBill);
+            $("#continueSummaryToPayment").on("click", proceedFromSummaryToPayment);
             $("#saveTransferTableBtn").on("click", handleTransferTable);
             $("#saveFinalBillBtn").on("click", handleFinalBill);
             $("#printBillPreviewBtn").on("click", printBillPreview);
@@ -432,9 +448,13 @@
             $("#finalSplitAmount1, #finalDiscountValue").on("input", () => updateFinalSplitRemainder(false));
             $("#finalDiscountType").on("change", () => updateFinalSplitRemainder(false));
             $("#finalBillingSource").on("change", () => {
-                finalLoyaltySelections = {};
+                finalLoyaltySelections = initialLoyaltySelections(finalLoyaltyCandidates());
                 renderFinalLoyalty();
                 updateFinalSplitRemainder(false);
+            });
+            $("#summaryBillingSource").on("change", () => {
+                summaryLoyaltySelections = initialLoyaltySelections(summaryLoyaltyCandidates());
+                renderSummaryLoyalty();
             });
             $("#showFinalLoyalty").on("click", () => $("#finalLoyaltyItems").toggleClass("hidden"));
             $("#finalSplitMethod1, #finalSplitMethod2").on("change", function() {
@@ -535,15 +555,10 @@
         }
 
         function triggerSummaryBill(tableId) {
-            const group = billingGroupForTable(tableId);
-
-            if ((group.sources || []).length <= 1) {
-                printSummary(tableId, "all");
-                return;
-            }
-
             $("#summaryBillTableId").val(tableId);
             populateBillingSourceSelect(tableId, "#summaryBillingSource");
+            summaryLoyaltySelections = initialLoyaltySelections(summaryLoyaltyCandidates());
+            renderSummaryLoyalty();
             $("#summaryBillModal").css("display", "flex");
         }
 
@@ -551,8 +566,14 @@
             const tableId = $("#summaryBillTableId").val();
             const billingSource = $("#summaryBillingSource").val() || "all";
 
+            printSummary(tableId, billingSource, collectSummaryLoyaltyRewards());
+        }
+
+        function proceedFromSummaryToPayment() {
+            const tableId = $("#summaryBillTableId").val();
+            const billingSource = $("#summaryBillingSource").val() || "all";
             $("#summaryBillModal").hide();
-            printSummary(tableId, billingSource);
+            triggerFinalBillModal(tableId, { ...summaryLoyaltySelections }, billingSource);
         }
 
         function triggerTransferModal(tableId) {
@@ -642,9 +663,10 @@
             transferTable(sourceTableId, targetTableId);
         }
 
-        function triggerFinalBillModal(tableId) {
+        function triggerFinalBillModal(tableId, loyaltySelections = null, billingSource = "all") {
             $("#finalBillTableId").val(tableId);
             populateBillingSourceSelect(tableId, "#finalBillingSource", "#finalBillingSourceWrapper");
+            $("#finalBillingSource").val(billingSource);
             $("input[name='final-payment-type'][value='cash']").prop("checked", true);
             $("#finalPrintCopies").val(@json(config('pos.printing.receipt.default_copies', 'customer')));
             $("#finalDiscountType").val("");
@@ -653,7 +675,7 @@
             $("#buyerName, #buyerPan, #buyerAddress, #creditCustomerName, #creditCustomerContact").val("");
             $("#finalSplitAmount1, #finalSplitAmount2, #finalSplitReference1, #finalSplitReference2").val("");
             $("#finalSplitPaymentFields").addClass("hidden");
-            finalLoyaltySelections = {};
+            finalLoyaltySelections = loyaltySelections || initialLoyaltySelections(finalLoyaltyCandidates());
             $("#finalLoyaltyItems").addClass("hidden");
             renderFinalLoyalty();
             $("#finalBillModal").css("display", "flex");
@@ -701,11 +723,10 @@
             };
         }
 
+        let summaryLoyaltySelections = {};
         let finalLoyaltySelections = {};
 
-        function finalLoyaltyCandidates() {
-            const tableId = $("#finalBillTableId").val();
-            const billingSource = $("#finalBillingSource").val() || "all";
+        function loyaltyCandidates(tableId, billingSource) {
             const group = billingGroupForTable(tableId);
 
             if (billingSource !== "all") {
@@ -713,6 +734,78 @@
             }
 
             return group.loyalty_items || [];
+        }
+
+        function initialLoyaltySelections(candidates) {
+            return Object.fromEntries(candidates
+                .filter(item => Number(item.redeemed_quantity || 0) > 0)
+                .map(item => [item.menu_id, Number(item.redeemed_quantity)]));
+        }
+
+        function persistedLoyaltyValue(candidates) {
+            return candidates.reduce((total, item) =>
+                total + Number(item.redeemed_quantity || 0) * Number(item.unit_price), 0);
+        }
+
+        function summaryLoyaltyCandidates() {
+            return loyaltyCandidates(
+                $("#summaryBillTableId").val(),
+                $("#summaryBillingSource").val() || "all"
+            );
+        }
+
+        function summaryLoyaltyValue() {
+            return summaryLoyaltyCandidates().reduce((total, item) =>
+                total + Number(summaryLoyaltySelections[item.menu_id] || 0) * Number(item.unit_price), 0);
+        }
+
+        function renderSummaryLoyalty() {
+            const tableId = $("#summaryBillTableId").val();
+            const billingSource = $("#summaryBillingSource").val() || "all";
+            const candidates = summaryLoyaltyCandidates();
+            const container = $("#summaryLoyaltyItems").empty();
+            $("#summaryLoyaltySection").toggleClass("hidden", candidates.length === 0);
+
+            candidates.forEach(item => {
+                const selected = Math.min(Number(summaryLoyaltySelections[item.menu_id] || 0), Number(item.quantity));
+                summaryLoyaltySelections[item.menu_id] = selected;
+                container.append(`
+                    <div class="rounded border border-amber-200 bg-white p-2 text-sm">
+                        <div class="mb-2"><strong>${item.name}</strong> × ${item.quantity}<br><small>Regular price NPR ${Number(item.unit_price).toFixed(2)} · ${selected} free</small></div>
+                        <div class="flex gap-2">
+                            <button type="button" class="rounded bg-gray-200 px-3 py-2 disabled:opacity-40" ${selected === 0 ? "disabled" : ""} onclick="changeSummaryLoyalty(${item.menu_id}, -1)">Undo one</button>
+                            <button type="button" class="rounded bg-amber-500 px-3 py-2 font-semibold text-white disabled:opacity-40" ${selected >= Number(item.quantity) ? "disabled" : ""} onclick="changeSummaryLoyalty(${item.menu_id}, 1)">Redeem one</button>
+                        </div>
+                    </div>`);
+            });
+
+            const regularTotal = selectedBillingSubtotal(tableId, billingSource) + persistedLoyaltyValue(candidates);
+            $("#summaryRegularTotal").text(`NPR ${formatMoney(regularTotal)}`);
+            $("#summaryLoyaltyValue").text(`− NPR ${formatMoney(summaryLoyaltyValue())}`);
+            $("#summaryPreviewTotal").text(`NPR ${formatMoney(Math.max(regularTotal - summaryLoyaltyValue(), 0))}`);
+        }
+
+        function changeSummaryLoyalty(menuId, delta) {
+            const candidate = summaryLoyaltyCandidates().find(item => Number(item.menu_id) === Number(menuId));
+            if (!candidate) return;
+            const current = Number(summaryLoyaltySelections[menuId] || 0);
+            const next = Math.max(0, Math.min(current + delta, Number(candidate.quantity)));
+            if (next === current) return;
+            if (delta > 0 && !confirm("Confirm that one completed physical stamp card has been collected.")) return;
+            summaryLoyaltySelections[menuId] = next;
+            renderSummaryLoyalty();
+        }
+
+        function collectSummaryLoyaltyRewards() {
+            return Object.entries(summaryLoyaltySelections)
+                .filter(([, quantity]) => Number(quantity) > 0)
+                .map(([menuId, quantity]) => ({ menu_id: Number(menuId), quantity: Number(quantity) }));
+        }
+
+        function finalLoyaltyCandidates() {
+            const tableId = $("#finalBillTableId").val();
+            const billingSource = $("#finalBillingSource").val() || "all";
+            return loyaltyCandidates(tableId, billingSource);
         }
 
         function finalLoyaltyValue() {
@@ -732,9 +825,8 @@
                     <div class="flex items-center justify-between gap-2 text-sm">
                         <span class="min-w-0">${item.name} × ${item.quantity}<br><small>Regular price NPR ${Number(item.unit_price).toFixed(2)}</small></span>
                         <div class="flex shrink-0 items-center gap-2">
-                            <button type="button" class="rounded bg-gray-200 px-3 py-1" onclick="changeFinalLoyalty(${item.menu_id}, -1)">−</button>
-                            <span class="w-5 text-center font-bold">${selected}</span>
-                            <button type="button" class="rounded bg-amber-500 px-3 py-1 text-white" onclick="changeFinalLoyalty(${item.menu_id}, 1)">+</button>
+                            <button type="button" class="rounded bg-gray-200 px-3 py-2 disabled:opacity-40" ${selected === 0 ? "disabled" : ""} onclick="changeFinalLoyalty(${item.menu_id}, -1)">Undo one</button>
+                            <button type="button" class="rounded bg-amber-500 px-3 py-2 font-semibold text-white disabled:opacity-40" ${selected >= Number(item.quantity) ? "disabled" : ""} onclick="changeFinalLoyalty(${item.menu_id}, 1)">Redeem one</button>
                         </div>
                     </div>`);
             });
@@ -764,7 +856,8 @@
         }
 
         function finalSubtotal(tableId, billingSource) {
-            return Math.max(selectedBillingSubtotal(tableId, billingSource) - finalLoyaltyValue(), 0);
+            const candidates = finalLoyaltyCandidates();
+            return Math.max(selectedBillingSubtotal(tableId, billingSource) + persistedLoyaltyValue(candidates) - finalLoyaltyValue(), 0);
         }
 
         function discountAmountForTable(tableId, billingSource) {
@@ -1018,7 +1111,7 @@
             });
         }
 
-        function printSummary(tableId, billingSource = "all") {
+        function printSummary(tableId, billingSource = "all", loyaltyRewards = []) {
             showLoader();
             const csrf_token = $('meta[name="csrf-token"]').attr("content");
 
@@ -1028,7 +1121,8 @@
                 data: {
                     tableId,
                     billAction: "summary",
-                    billingSource
+                    billingSource,
+                    loyalty_rewards: loyaltyRewards
                 },
                 headers: {
                     "X-CSRF-TOKEN": csrf_token
@@ -1036,7 +1130,12 @@
                 contentType: "application/x-www-form-urlencoded",
                 success: response => {
                     if (response.status === "success") {
-                        alert("Summary bill queued for printing.");
+                        if (response.billingGroup) {
+                            tableBillingGroups[String(tableId)] = response.billingGroup;
+                            summaryLoyaltySelections = initialLoyaltySelections(summaryLoyaltyCandidates());
+                            renderSummaryLoyalty();
+                        }
+                        alert("Unpaid bill preview queued for printing. You can now proceed to payment.");
                     } else {
                         alert("Summary Print Failed");
                     }

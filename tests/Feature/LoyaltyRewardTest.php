@@ -9,6 +9,8 @@ use App\Models\Category;
 use App\Models\Menu;
 use App\Models\Order;
 use App\Models\OrderDetail;
+use App\Models\PrintJob;
+use App\Models\PrintStation;
 use App\Models\Table;
 use App\Models\User;
 use App\Modules\Inventory\Models\MenuItemStockMapping;
@@ -87,7 +89,7 @@ class LoyaltyRewardTest extends TestCase
         $this->assertDatabaseCount('orders', 0);
     }
 
-    public function test_table_order_is_not_redeemed_until_cashier_finalizes_payment(): void
+    public function test_cashier_can_prepare_reward_on_unpaid_preview_and_finalize_it(): void
     {
         [$cashier, $menu] = $this->loyaltyFixture();
         $table = Table::where('name', 'T1')->firstOrFail();
@@ -101,6 +103,35 @@ class LoyaltyRewardTest extends TestCase
         $this->assertSame(0, (int) $detail->loyalty_reward_quantity);
         $this->assertSame((float) $menu->price * 2, (float) $detail->order->fresh()->total);
         $this->assertDatabaseCount('bills', 0);
+
+        PrintStation::create([
+            'name' => 'Preview printer',
+            'token_hash' => PrintStation::hashToken('preview-token'),
+            'enabled' => true,
+            'printer_map' => ['counter' => 'PREVIEW'],
+        ]);
+
+        $this->get(route('pos.tables'))
+            ->assertOk()
+            ->assertSee('Bill Preview')
+            ->assertSee('Redeem loyalty card')
+            ->assertSee('Proceed to Payment');
+
+        $this->postJson(route('pos.table.bill'), [
+            'tableId' => $table->id,
+            'billAction' => 'summary',
+            'billingSource' => 'all',
+            'loyalty_rewards' => [['menu_id' => $menu->id, 'quantity' => 1]],
+        ])->assertOk()
+            ->assertJsonPath('billAmount', fn ($amount) => (float) $amount === (float) $menu->price)
+            ->assertJsonPath('billingGroup.loyalty_items.0.redeemed_quantity', 1);
+
+        $previewBill = Bill::firstOrFail();
+        $this->assertFalse($previewBill->isLocked());
+        $this->assertSame(1, (int) $detail->fresh()->loyalty_reward_quantity);
+        $preview = base64_decode(PrintJob::where('copy_type', 'summary')->sole()->payload, true);
+        $this->assertStringContainsString('NOT A TAX INVOICE', $preview);
+        $this->assertStringContainsString('Stamp-card reward', $preview);
 
         $this->postJson(route('pos.table.bill'), [
             'tableId' => $table->id,

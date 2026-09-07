@@ -172,9 +172,8 @@ function renderCheckoutLoyalty() {
             <div class="flex items-center justify-between gap-2 text-sm">
                 <span class="min-w-0">${item.name} × ${item.quantity}<br><small>Regular price NPR ${Number(item.unit_price).toFixed(2)}</small></span>
                 <div class="flex shrink-0 items-center gap-2">
-                    <button type="button" class="rounded bg-gray-200 px-3 py-1" onclick="changeCheckoutLoyalty(${item.menu_id}, -1)">−</button>
-                    <span class="w-5 text-center font-bold">${selected}</span>
-                    <button type="button" class="rounded bg-amber-500 px-3 py-1 text-white" onclick="changeCheckoutLoyalty(${item.menu_id}, 1)">+</button>
+                    <button type="button" class="rounded bg-gray-200 px-3 py-2 disabled:opacity-40" ${selected === 0 ? "disabled" : ""} onclick="changeCheckoutLoyalty(${item.menu_id}, -1)">Undo one</button>
+                    <button type="button" class="rounded bg-amber-500 px-3 py-2 font-semibold text-white disabled:opacity-40" ${selected >= Number(item.quantity) ? "disabled" : ""} onclick="changeCheckoutLoyalty(${item.menu_id}, 1)">Redeem one</button>
                 </div>
             </div>`);
     });

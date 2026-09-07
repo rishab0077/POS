@@ -1,8 +1,8 @@
 # Restaurant POS — Project Overview and Split-Payment Plan
 
-Last reviewed: 2026-09-06
+Last reviewed: 2026-09-07
 Branch: `local-lan-deployment`
-Revision reviewed: payment-time loyalty correction based on `9f9d7f5` (`loyalty implementation`)
+Revision reviewed: unpaid-preview loyalty implementation based on `9ff2ea4` (`Move loyalty redemption to final payment`)
 
 ## Executive summary
 
@@ -12,7 +12,7 @@ The application is suitable for normal local restaurant operation with CBMS disa
 
 Split tender is implemented for both dine-in and immediate takeaway billing. An operator can retain the existing single-payment flow or allocate a finalized total across exactly two distinct non-credit methods, such as NPR 400 cash plus NPR 600 Fonepay on a NPR 1,000 bill. Allocations are immutable, included in receipts and fiscal snapshots, and reported under their actual methods.
 
-Physical stamp-card rewards are also implemented. Categories opt into eligibility; ordering only marks eligible products. When Final Bill is opened, a cashier can collect a completed card and redeem one eligible item unit before choosing payment, without creating a customer account. The rewarded item remains on the receipt at NPR 0.00 while its regular price and approval details are preserved for audit and reporting.
+Physical stamp-card rewards are also implemented. Categories opt into eligibility; ordering only marks eligible products. For an existing table bill, a cashier can redeem completed cards while showing the editable unpaid Bill Preview, print and persist that preview, and carry the selection into Final Bill. A cashier can also redeem directly in Final Bill before choosing payment. No customer account is required, and the rewarded item remains on the receipt at NPR 0.00 while its regular price and approval details are preserved for audit and reporting.
 
 ## Documentation maintenance policy
 
@@ -26,7 +26,7 @@ Project-state documentation is updated as part of the same agent task that compl
 - Runtime: Docker Compose with PHP-FPM, Nginx, MySQL, Soketi, queue worker, and scheduler services.
 - Deployment: one installation per restaurant, available on a trusted local network through a reserved server IP.
 - Current development branch: `local-lan-deployment`.
-- Latest recorded automated verification: 140 tests passed with 778 assertions.
+- Latest recorded automated verification: 140 tests passed with 789 assertions.
 
 ## Implemented features
 
@@ -135,11 +135,11 @@ Live status:
 | IRD automatic production delivery | Not authorized or enabled |
 | Split payment | Implemented and regression-tested; final phone smoke test recommended after redeployment |
 | Phone POS and Bills layout | Responsive overflow fixes implemented and regression-tested |
-| Physical stamp-card loyalty | Implemented, regression-tested, and migrated in the isolated preview; Amber deployment plus phone/thermal smoke test pending |
+| Physical stamp-card loyalty | Unpaid-preview and final-payment flows implemented, regression-tested, and running in the isolated preview; Amber deployment plus phone/thermal smoke test pending |
 
-The current split-payment and payment-time loyalty preview is running on port 8097 against isolated seeded volumes under the Compose project `restaurant-pos-split-preview`. The loyalty migration and HTTP health smoke test passed on 2026-09-06. The older local database volume was not migrated because its stored credentials no longer match the current deployment environment; it remains untouched pending credential recovery or an explicitly authorized recovery procedure.
+The isolated Compose project `restaurant-pos-split-preview` uses port 8097 and separate seeded volumes. Production images containing the newer unpaid-preview flow were built and all six services were recreated on 2026-09-07. No migrations were pending, MySQL reported healthy, and `/health` returned `{"status":"ok"}`. The older local database volume was not migrated because its stored credentials no longer match the current deployment environment; it remains untouched pending credential recovery or an explicitly authorized recovery procedure.
 
-The port 8097 preview now contains the split-payment, mobile/currency, and loyalty changes. Automated and container health checks pass; phone layout and physical thermal-printer acceptance remain operator checks.
+The port 8097 preview contains the split-payment, mobile/currency, and unpaid-preview loyalty changes. Automated and container health checks pass; phone layout and physical thermal-printer acceptance remain operator checks.
 
 ## Known limitations
 
@@ -155,11 +155,11 @@ The port 8097 preview now contains the split-payment, mobile/currency, and loyal
 
 # Implemented Feature: Physical Stamp-card Loyalty
 
-Implementation completed and release-verified on 2026-09-06. An administrator marks eligible categories, and any menu item in at least one eligible category can be redeemed by a POS cashier. Ordering and KOT submission do not redeem cards or alter prices. The cashier opens Final Bill, chooses Redeem stamp card, confirms each physically collected completed card, reviews the recalculated amount, and then chooses or confirms payment. One card equals one free item unit; multiple units require multiple confirmations/cards, and pending selections can be undone until finalization.
+Implementation completed and regression-verified through the unpaid-preview flow on 2026-09-07. An administrator marks eligible categories, and any menu item in at least one eligible category can be redeemed by a POS cashier. Ordering and KOT submission do not redeem cards or alter prices. For an existing table order, the cashier opens Bill Preview, uses **Redeem one** for each physically collected completed card, reviews the revised unpaid total, and can undo, print the preview, or proceed to payment. Printing persists the selection on the editable bill; Proceed to Payment carries it into Final Bill. Direct Final Bill redemption remains available. One card equals one free item unit, and selections can be undone until finalization.
 
 The server validates eligibility and quantity independently of the browser and applies rewards inside the locked bill-finalization transaction. Rewarded quantities remain on KOT/BOT tickets and consume inventory normally, but their sales price is zero. Final fiscal snapshots preserve separate paid and reward lines, the regular price, category, cashier, approval time, and proportional inventory deduction. Receipts label the reward, and the existing discount report includes a physical stamp-card section.
 
-This feature deliberately does not create customer profiles, points balances, digital card identifiers, manager approval, or payment-provider integration. Existing categories remain ineligible until explicitly enabled. The isolated preview has run the new migration successfully; Amber still requires deployment and a staff-device/thermal-receipt smoke test.
+This feature deliberately does not create customer profiles, points balances, digital card identifiers, manager approval, or payment-provider integration. Existing categories remain ineligible until explicitly enabled. The refreshed isolated preview is running with all migrations applied and a passing HTTP health check; Amber still requires deployment and a staff-device/thermal-receipt smoke test.
 
 # Implemented Feature: Split Tender Payments
 

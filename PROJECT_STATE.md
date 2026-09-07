@@ -1,6 +1,6 @@
 # Restaurant POS — Living Project State
 
-Last updated: 2026-09-06
+Last updated: 2026-09-07
 
 This file is the shared handoff for the project. Every agent or chat that implements a material repository change must update it in the same task, as required by `AGENTS.md`; plans must remain clearly separated from completed work.
 
@@ -21,7 +21,7 @@ This file is the shared handoff for the project. Every agent or chat that implem
 - Production images exclude Node.js and npm and include the MariaDB backup client and MySQL 8 authentication connector required by `backup:database`.
 - `npm ci` and the production frontend build complete with zero reported npm vulnerabilities.
 - Production uses the database queue; the test profile uses the synchronous queue.
-- Automated verification currently passes: **140 tests, 778 assertions**.
+- Automated verification currently passes: **140 tests, 789 assertions**.
 
 ## Completed work
 
@@ -269,16 +269,17 @@ Key files:
 ### Physical stamp-card loyalty rewards
 
 - Administrators can mark a menu category as eligible for physical stamp-card rewards; existing categories default to ineligible, and a menu is eligible when any assigned category is eligible.
-- The ordering/KOT flow only identifies eligible menu items; it does not redeem cards or change prices. Redemption is available only after the cashier opens Final Bill, before selecting or confirming payment.
-- POS cashiers can select one eligible item unit per physically collected completed card, confirm each card collection, increment additional cards, or undo a pending selection before finalization. Existing table orders and newly selected takeaway/table items are supported.
-- Pending selections stay in the browser until payment is finalized. Finalization applies the rewards and recalculates order, discount, tax, split-payment, bill, and receipt totals in one locked database transaction.
+- The ordering/KOT flow only identifies eligible menu items; it does not redeem cards or change prices. For an existing table bill, redemption can be prepared in the editable unpaid Bill Preview or selected in Final Bill before payment.
+- POS cashiers can select one eligible item unit per physically collected completed card through clear **Redeem one** and **Undo one** controls. Existing table orders and newly selected takeaway/table items are supported.
+- Printing the unpaid preview persists the pending reward on the editable bill, prints the reward at `NPR 0.00`, and allows it to survive a page reload or another device opening the bill. Proceed to Payment carries the preview selection into Final Bill; selections remain editable until finalization.
+- Finalization locks the selected rewards and recalculates order, discount, tax, split-payment, bill, and receipt totals in one database transaction. Finalized fiscal bills remain immutable.
 - The server independently validates menu eligibility and reward quantities and rejects forged zero-price requests, waiter/order-time rewards, quantities above the ordered quantity, and changes to finalized bills. Invalid selections are also preflighted before a new immediate-bill order is inserted.
 - Kitchen and bar tickets retain the full prepared quantity. Inventory deduction also retains the full quantity even though rewarded units produce zero sales revenue.
 - Fiscal snapshots split mixed paid/reward quantities into paid lines and explicit `NPR 0.00` loyalty lines while preserving the original unit price, category, approving cashier, approval time, and proportional inventory-consumption snapshot.
 - Browser and ESC/POS receipts label the zero-price item as a loyalty reward and show its regular price. Bill details and the discount report expose redemption quantities and promotional value.
 - Item and category sales reports count all served quantities but exclude the rewarded units from sales revenue.
-- Release verification completed on 2026-09-06: focused payment-time loyalty coverage passed with 5 tests and 37 assertions; the complete suite passed with 140 tests and 778 assertions; JavaScript syntax, the Vite production build, Blade rendering through HTTP tests, and `git diff --check` passed.
-- The isolated `restaurant-pos-split-preview` stack was rebuilt with the payment-time loyalty flow, confirmed no pending migrations, started all six services, reported healthy MySQL and Nginx containers, and returned `{"status":"ok"}` from `/health`. Amber still runs the split-only release; repeat the migration plus phone/thermal-printer smoke test before enabling loyalty there.
+- Release verification completed on 2026-09-07: focused unpaid-preview and final-payment loyalty coverage passed with 5 tests and 48 assertions; the complete suite passed with 140 tests and 789 assertions; JavaScript syntax, the Vite production build, Blade rendering through HTTP tests, and `git diff --check` passed.
+- Production images for the isolated `restaurant-pos-split-preview` stack were rebuilt with the unpaid-preview flow, all six services were recreated and started, no migrations were pending, MySQL reported healthy, and `/health` returned `{"status":"ok"}`. Amber still runs the split-only release; repeat the migration plus phone/thermal-printer smoke test before enabling loyalty there.
 - CBMS remains disabled. During controlled acceptance, confirm with the restaurant's tax adviser/IRD that an item retained on the invoice at zero payable price is the accepted treatment for this physical-card promotion before enabling automatic delivery.
 
 Key files:
@@ -415,6 +416,8 @@ CBMS remains off with `CBMS_ENABLED=false`. This allows normal local use and rec
 - 2026-09-03: approved Add Notes mobile overflow and duplicate-selection fixes — focused suite 4 passed, 54 assertions; complete regression suite 135 passed, 741 assertions; JavaScript syntax, production Vite build, and diff checks passed.
 - 2026-09-06: corrected loyalty redemption to occur only in Final Bill immediately before payment; focused suite 5 passed, 37 assertions; complete regression suite 140 passed, 778 assertions; JavaScript syntax, production Vite/Blade builds, and diff checks passed.
 - 2026-09-06: rebuilt the production `app` and `nginx` images for the isolated `restaurant-pos-split-preview` stack, ran `2026_09_04_000001_add_physical_loyalty_rewards`, recreated the application services, confirmed all six services running with healthy MySQL and Nginx, and received HTTP 200 with `{"status":"ok"}` from `/health`.
+- 2026-09-07: added editable loyalty redemption to the unpaid Bill Preview, including one-tap redeem/undo controls, revised preview totals, persisted preview printing, and selection handoff to Final Bill; focused suite 5 passed with 48 assertions and the complete suite passed with 140 tests and 789 assertions.
+- 2026-09-07: rebuilt the isolated preview production images, started Docker Desktop, recreated all six services, confirmed no pending migrations and healthy MySQL, and received `{"status":"ok"}` from `/health` on port 8097.
 
 ## Change log
 
@@ -472,3 +475,9 @@ CBMS remains off with `CBMS_ENABLED=false`. This allows normal local use and rec
 - Implemented category-controlled physical stamp-card loyalty redemption for new and existing POS orders, including cashier confirmation and undo, zero-price receipt lines, full KOT/BOT and inventory quantities, immutable fiscal/audit details, and promotional-value reporting.
 - Moved redemption out of order entry and into Final Bill: the cashier collects and selects cards only immediately before payment, totals and split tender update before confirmation, and the server applies rewards transactionally during finalization.
 - Verified the corrected loyalty release with focused and complete automated suites, frontend, JavaScript, and Blade builds, and an isolated production Compose migration and health smoke test. Amber remains on the split-only release pending explicit loyalty deployment and phone/thermal-printer acceptance.
+
+### 2026-09-07
+
+- Added loyalty controls to the editable unpaid Bill Preview so a cashier can redeem or undo cards while presenting the bill, print and persist the revised unpaid preview, and carry the selection directly into Final Bill.
+- Reused the existing editable bill, summary-print, and locked finalization paths without adding a migration or a separate loyalty subsystem. Finalized receipts and fiscal snapshots remain immutable.
+- Verified the change with focused and complete automated suites, JavaScript syntax checks, the production Vite build, Blade rendering through HTTP tests, and diff checks.

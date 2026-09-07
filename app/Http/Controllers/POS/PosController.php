@@ -219,6 +219,15 @@ class PosController extends Controller
         $billId = BillHelper::createTableBill($tableId, $notes, null, 0, [], $sourceTableId);
 
         if ($billAction === 'summary') {
+            if ($request->has('loyalty_rewards')) {
+                $bill = BillHelper::updateLoyaltyRewardsForPreview(
+                    $billId,
+                    $request->input('loyalty_rewards', [])
+                );
+            } else {
+                $bill = Bill::findOrFail($billId);
+            }
+
             $job = $this->printJobService->queueSummaryBill($billId);
 
             $audit->record('summary_bill_requested', 'billing', [
@@ -227,10 +236,17 @@ class PosController extends Controller
                     'summary' => "Summary bill print requested for bill #{$billId}.",
                     'bill_id' => $billId,
                     'print_job_id' => $job->id,
+                    'loyalty_rewards' => $request->input('loyalty_rewards', []),
                 ],
             ]);
 
-            return response()->json(['status' => 'success', 'billId' => $billId, 'message' => 'Summary bill queued for printing']);
+            return response()->json([
+                'status' => 'success',
+                'billId' => $billId,
+                'billAmount' => (float) $bill->bill_amount,
+                'billingGroup' => $this->billingGroupsForTables([(int) $tableId])[(int) $tableId] ?? null,
+                'message' => 'Unpaid bill preview queued for printing',
+            ]);
         }
 
         $paymentType = $request->paymentType ? $request->paymentType : 'cash';
@@ -559,11 +575,13 @@ class PosController extends Controller
                             'menu_id' => $menuId,
                             'name' => $detail->menu->name,
                             'quantity' => 0,
+                            'redeemed_quantity' => 0,
                             'unit_price' => (float) $detail->unit_price,
                         ];
                     }
 
                     $sourceGroups[$sourceTableId]['loyalty_items'][$menuId]['quantity'] += (int) $detail->quantity;
+                    $sourceGroups[$sourceTableId]['loyalty_items'][$menuId]['redeemed_quantity'] += (int) $detail->loyalty_reward_quantity;
                 }
             }
 
@@ -582,6 +600,7 @@ class PosController extends Controller
                         'menu_id' => $items->first()['menu_id'],
                         'name' => $items->first()['name'],
                         'quantity' => $items->sum('quantity'),
+                        'redeemed_quantity' => $items->sum('redeemed_quantity'),
                         'unit_price' => $items->first()['unit_price'],
                     ])->values()->all(),
             ];
