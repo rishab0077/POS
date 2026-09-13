@@ -29,7 +29,7 @@ class UserStoreRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:255'],
             'username' => ['required', 'string', 'max:64', 'regex:/^[a-z0-9][a-z0-9._-]*$/', 'unique:users,username'],
-            'email' => ['required', 'string', 'email', 'max:255', 'unique:users'],
+            'email' => ['nullable', 'string', 'email', 'max:255', 'unique:users'],
             'password' => ['required', 'confirmed', Password::defaults()],
             'category_id' => ['required', 'exists:employee_categories,id'],
             'is_active' => ['nullable', 'boolean'],
@@ -40,6 +40,7 @@ class UserStoreRequest extends FormRequest
     {
         $this->merge([
             'username' => Str::lower(trim((string) $this->input('username'))),
+            'email' => filled($this->input('email')) ? trim((string) $this->input('email')) : null,
         ]);
     }
 }

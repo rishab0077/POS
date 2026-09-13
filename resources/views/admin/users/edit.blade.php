@@ -38,7 +38,7 @@
                         </div>
 
                         <div class="sm:col-span-6">
-                            <label for="email" class="block text-sm font-medium text-gray-700">Email</label>
+                            <label for="email" class="block text-sm font-medium text-gray-700">Email (optional)</label>
                             <div class="mt-1">
                                 <input type="email" id="email" name="email"
                                     value="{{ old('email', $user->email) }}"
@@ -47,6 +47,7 @@
                             @error('email')
                                 <div class="text-sm text-red-400">{{ $message }}</div>
                             @enderror
+                            <p class="text-xs text-gray-500 mt-1">Accounts without email must have their password reset by an administrator.</p>
                         </div>
 
                         <div class="sm:col-span-6">

@@ -21,7 +21,7 @@ This file is the shared handoff for the project. Every agent or chat that implem
 - Production images exclude Node.js and npm and include the MariaDB backup client and MySQL 8 authentication connector required by `backup:database`.
 - `npm ci` and the production frontend build complete with zero reported npm vulnerabilities.
 - Production uses the database queue; the test profile uses the synchronous queue.
-- Automated verification currently passes: **140 tests, 793 assertions**.
+- Automated verification currently passes: **140 tests, 795 assertions**.
 
 ## Completed work
 
@@ -489,5 +489,7 @@ CBMS remains off with `CBMS_ENABLED=false`. This allows normal local use and rec
 
 - Fixed the unpaid Bill Preview so it displays all ordered menu lines rather than only loyalty-eligible candidates, including quantity, unit price, and regular line total.
 - Hid the billing-source selector when a bill has only one source; retained it for transferred or merged orders where choosing a source is meaningful.
-- Recorded, but did not implement, the requested future change to make staff email optional. Authentication and staff forms still retain their current email requirements.
-- Verified and rebuilt the isolated preview; Amber remains unchanged.
+- Made staff email optional in the users table and administrator create/edit workflows. Username login remains unchanged; accounts without email require an administrator to reset forgotten passwords.
+- Confirmed loyalty reporting remains available under **Reporting → Discounts**, with free-item quantity, original promotional value, invoice, item, category, and approving cashier; normal item/category reports count served reward units without treating them as revenue.
+- Verified optional staff email and loyalty reporting with 16 focused tests and 119 assertions, then passed the complete suite with 140 tests and 795 assertions.
+- Rebuilt the isolated preview, ran `2026_09_14_000001_make_user_email_optional`, and confirmed `{"status":"ok"}` from `/health`. Existing staff emails and transaction history were preserved; Amber remains unchanged.

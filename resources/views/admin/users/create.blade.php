@@ -39,7 +39,7 @@
                             @enderror
                         </div>
                         <div class="sm:col-span-6">
-                            <label for="email" class="block text-sm font-medium text-gray-700">Email</label>
+                            <label for="email" class="block text-sm font-medium text-gray-700">Email (optional)</label>
                             <div class="mt-1">
                                 <input type="email" id="email" name="email"
                                     class="block w-full appearance-none bg-white border border-gray-400 rounded-md py-2 px-3 text-base leading-normal transition duration-150 ease-in-out sm:text-sm sm:leading-5"
@@ -48,6 +48,7 @@
                             @error('email')
                                 <div class="text-sm text-red-400">{{ $message }}</div>
                             @enderror
+                            <p class="text-xs text-gray-500 mt-1">Accounts without email must have their password reset by an administrator.</p>
                         </div>
                         <div class="sm:col-span-6">
                             <label for="password" class="block text-sm font-medium text-gray-700">Password</label>

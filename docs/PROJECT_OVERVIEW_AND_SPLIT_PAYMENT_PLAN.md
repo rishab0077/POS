@@ -26,7 +26,7 @@ Project-state documentation is updated as part of the same agent task that compl
 - Runtime: Docker Compose with PHP-FPM, Nginx, MySQL, Soketi, queue worker, and scheduler services.
 - Deployment: one installation per restaurant, available on a trusted local network through a reserved server IP.
 - Current development branch: `local-lan-deployment`.
-- Latest recorded automated verification: 140 tests passed with 793 assertions.
+- Latest recorded automated verification: 140 tests passed with 795 assertions.
 
 ## Implemented features
 
@@ -34,7 +34,7 @@ Project-state documentation is updated as part of the same agent task that compl
 
 - Configurable restaurant name, address, PAN/VAT details, VAT rate, service charge, receipt settings, and payment options.
 - Administrator, owner, manager, biller, waiter, kitchen, and inventory-oriented access controls.
-- Staff account creation, deactivation, password controls, login rate limiting, MFA, recovery codes, and recent-authentication checks.
+- Staff account creation, deactivation, password controls, login rate limiting, MFA, recovery codes, and recent-authentication checks. Staff email is optional; accounts without email use administrator-managed password resets.
 - Audit logging with sensitive-value redaction.
 
 ### Ordering and tables
@@ -157,13 +157,13 @@ The port 8097 preview contains the split-payment, mobile/currency, and unpaid-pr
 
 Implementation completed and regression-verified through the unpaid-preview flow on 2026-09-14. An administrator marks eligible categories, and any menu item in at least one eligible category can be redeemed by a POS cashier. Ordering and KOT submission do not redeem cards or alter prices. For an existing table order, the cashier opens Bill Preview, reviews every ordered item with quantity and pricing, uses **Redeem one** for each physically collected completed card, reviews the revised unpaid total, and can undo, print the preview, or proceed to payment. The billing-source selector stays hidden for ordinary single-table bills and appears for transferred or merged orders. Printing persists the selection on the editable bill; Proceed to Payment carries it into Final Bill. Direct Final Bill redemption remains available. One card equals one free item unit, and selections can be undone until finalization.
 
-The server validates eligibility and quantity independently of the browser and applies rewards inside the locked bill-finalization transaction. Rewarded quantities remain on KOT/BOT tickets and consume inventory normally, but their sales price is zero. Final fiscal snapshots preserve separate paid and reward lines, the regular price, category, cashier, approval time, and proportional inventory deduction. Receipts label the reward, and the existing discount report includes a physical stamp-card section.
+The server validates eligibility and quantity independently of the browser and applies rewards inside the locked bill-finalization transaction. Rewarded quantities remain on KOT/BOT tickets and consume inventory normally, but their sales price is zero. Final fiscal snapshots preserve separate paid and reward lines, the regular price, category, cashier, approval time, and proportional inventory deduction. Receipts label the reward. **Reporting → Discounts** shows total free-item quantity and value plus each invoice, item, category, quantity, and approving cashier. Item/category sales reports count all served units while excluding rewarded units from revenue.
 
 This feature deliberately does not create customer profiles, points balances, digital card identifiers, manager approval, or payment-provider integration. Existing categories remain ineligible until explicitly enabled. The refreshed isolated preview is running with all migrations applied and a passing HTTP health check; Amber still requires deployment and a staff-device/thermal-receipt smoke test.
 
-## Requested future change
+## Implemented Feature: Optional staff email
 
-- Make staff email optional. This is recorded only as a request; the current database, validation, authentication, and staff-management behavior has not been changed.
+Implemented and preview-verified on 2026-09-14. Administrators may create or edit a staff account without entering an email address; username and password remain required and login continues to use username. Existing email addresses are retained. Because email password recovery cannot work without an address, an administrator must reset the password for an account that has no email.
 
 # Implemented Feature: Split Tender Payments
 

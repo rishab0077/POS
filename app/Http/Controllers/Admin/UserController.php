@@ -129,6 +129,7 @@ class UserController extends Controller
 
         $request->merge([
             'username' => Str::lower(trim((string) $request->input('username'))),
+            'email' => filled($request->input('email')) ? trim((string) $request->input('email')) : null,
         ]);
 
         $validated = $request->validate([
@@ -140,7 +141,7 @@ class UserController extends Controller
                 'regex:/^[a-z0-9][a-z0-9._-]*$/',
                 Rule::unique('users', 'username')->ignore($user->id),
             ],
-            'email' => ['required', 'string', 'email', 'max:255', Rule::unique('users')->ignore($user->id)],
+            'email' => ['nullable', 'string', 'email', 'max:255', Rule::unique('users')->ignore($user->id)],
             'category_id' => ['required', 'exists:employee_categories,id'],
             'password' => ['nullable', 'confirmed', Password::defaults()],
             'is_active' => ['nullable', 'boolean'],

@@ -203,7 +203,6 @@ class AuditLoggingTest extends TestCase
             ->post(route('admin.users.store'), [
                 'name' => 'Audit User',
                 'username' => 'audit-user',
-                'email' => 'audit-user@example.test',
                 'password' => 'SecurePassword123',
                 'password_confirmation' => 'SecurePassword123',
                 'category_id' => UserRole::Biller->value,
@@ -212,17 +211,19 @@ class AuditLoggingTest extends TestCase
             ->assertRedirect(route('admin.users.index'));
 
         $user = User::where('username', 'audit-user')->firstOrFail();
+        $this->assertNull($user->email);
 
         $this->actingAs($admin)
             ->withSession(['auth.mfa_passed' => true, 'auth.step_up_at' => time()])
             ->put(route('admin.users.update', $user), [
                 'name' => 'Audit User Updated',
                 'username' => 'audit-user',
-                'email' => 'audit-user-updated@example.test',
                 'category_id' => UserRole::Manager->value,
                 'is_active' => true,
             ])
             ->assertRedirect(route('admin.users.index'));
+
+        $this->assertNull($user->fresh()->email);
 
         $this->actingAs($admin)
             ->withSession(['auth.mfa_passed' => true, 'auth.step_up_at' => time()])
