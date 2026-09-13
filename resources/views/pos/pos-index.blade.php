@@ -107,8 +107,22 @@
                     </table>
                     <div class="flex-grow overflow-y-auto">
                         <table class="w-full">
-                            <tbody id="order-items-body" class="divide-y divide-gray-200">
-                                <tr id="noitems">
+                            @if ($existingOrderItems->isNotEmpty())
+                                <tbody id="existing-order-items-body" class="order-items-body divide-y divide-gray-200 bg-blue-50">
+                                    @foreach ($existingOrderItems as $item)
+                                        <tr>
+                                            <td>
+                                                <span>{{ $item['name'] }}</span>
+                                                <small class="ml-2 text-blue-700">Existing</small>
+                                            </td>
+                                            <td>{{ $item['quantity'] }}</td>
+                                            <td>{{ number_format(($item['quantity'] - $item['redeemed_quantity']) * $item['unit_price'], 2) }}</td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            @endif
+                            <tbody id="order-items-body" class="order-items-body divide-y divide-gray-200">
+                                <tr id="noitems" class="{{ $existingOrderItems->isNotEmpty() ? 'hidden' : '' }}">
                                     <td colspan="3" class="text-center text-gray-400 p-8">
                                         <i class="fa fa-shopping-cart text-4xl mb-2"></i>
                                         <p>No Items Selected</p>
@@ -294,6 +308,7 @@
         const indexUrl = "{{ route('pos.tables', [], false) }}";
         const settleTableUrl = "{{ route('pos.table.settle', [], false) }}";
         const existingLoyaltyCandidates = @json($existingLoyaltyCandidates);
+        const existingOrderItemCount = {{ $existingOrderItems->count() }};
         const buyerPanThreshold = {{ (float) config('pos.invoice.buyer_pan_required_above', 10000) }};
         const defaultPrintCopies = @json(config('pos.printing.receipt.default_copies', 'customer'));
         const vatRate = {{ (float) config('pos.tax.vat_rate', 13) }};
@@ -305,31 +320,31 @@
     <script src="{{ asset('js/pos.js') }}"></script>
     <style>
         /* Custom styles for dynamically generated elements from pos.js */
-        #order-items-body tr {
+        .order-items-body tr {
             display: flex;
             width: 100%;
             align-items: center;
             padding: 0.5rem 0.25rem;
         }
 
-        #order-items-body tr td {
+        .order-items-body tr td {
             padding: 0.25rem;
         }
 
-        #order-items-body tr td:nth-child(1) {
+        .order-items-body tr td:nth-child(1) {
             width: 50%;
             display: flex;
             align-items: center;
         }
 
         /* 3/6 */
-        #order-items-body tr td:nth-child(2) {
+        .order-items-body tr td:nth-child(2) {
             width: 33.33%;
             text-align: center;
         }
 
         /* 2/6 */
-        #order-items-body tr td:nth-child(3) {
+        .order-items-body tr td:nth-child(3) {
             width: 16.66%;
             text-align: right;
             padding-right: 0.5rem;

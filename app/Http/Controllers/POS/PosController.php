@@ -53,6 +53,7 @@ class PosController extends Controller
         // Initialize variables
         $table = null;
         $existingOrderTotal = 0;
+        $existingOrderItems = collect();
         $existingLoyaltyCandidates = collect();
 
         if ($orderType === OrderType::DineIn) {
@@ -69,33 +70,10 @@ class PosController extends Controller
                     ->with('warning', 'This table is finalized or unavailable and cannot accept more orders.');
             }
 
-            $existingOrderTotal = (float) data_get(
-                $this->billingGroupsForTables([$table->id]),
-                $table->id . '.total',
-                0
-            );
-
-            $finalizedOrderIds = BillOrder::whereHas('bill', function ($query) {
-                $query->where('status', 'closed')
-                    ->orWhereNotNull('locked_at')
-                    ->orWhereNotNull('printed_at');
-            })->pluck('order_id');
-
-            $existingLoyaltyCandidates = OrderDetail::with(['menu.category', 'order'])
-                ->whereHas('order', function ($query) use ($table, $finalizedOrderIds) {
-                    $query->where('table_id', $table->id)
-                        ->whereNotIn('status', [OrderStatus::Closed->value, OrderStatus::Cancelled->value])
-                        ->whereNotIn('id', $finalizedOrderIds);
-                })
-                ->get()
-                ->filter(fn (OrderDetail $detail) => $detail->menu?->category->contains('loyalty_eligible', true))
-                ->groupBy('menu_id')
-                ->map(fn ($items) => [
-                    'menu_id' => $items->first()->menu_id,
-                    'name' => $items->first()->menu?->name ?? 'Deleted menu item',
-                    'quantity' => (int) $items->sum('quantity'),
-                    'unit_price' => (float) $items->first()->unit_price,
-                ])->values();
+            $billingGroup = $this->billingGroupsForTables([$table->id])[$table->id] ?? [];
+            $existingOrderTotal = (float) ($billingGroup['total'] ?? 0);
+            $existingOrderItems = collect($billingGroup['items'] ?? []);
+            $existingLoyaltyCandidates = collect($billingGroup['loyalty_items'] ?? []);
         }
 
         return view('pos.pos-index', compact(
@@ -105,6 +83,7 @@ class PosController extends Controller
             'table',
             'orderType',
             'existingOrderTotal',
+            'existingOrderItems',
             'existingLoyaltyCandidates'
         ));
     }
@@ -573,11 +552,13 @@ class PosController extends Controller
                             'menu_id' => $detail->menu_id,
                             'name' => $detail->menu?->name ?? 'Deleted menu item',
                             'quantity' => 0,
+                            'redeemed_quantity' => 0,
                             'unit_price' => (float) $detail->unit_price,
                         ];
                     }
 
                     $sourceGroups[$sourceTableId]['items'][$itemKey]['quantity'] += (int) $detail->quantity;
+                    $sourceGroups[$sourceTableId]['items'][$itemKey]['redeemed_quantity'] += (int) $detail->loyalty_reward_quantity;
 
                     if (!$detail->menu?->category->contains('loyalty_eligible', true)) {
                         continue;
@@ -616,6 +597,7 @@ class PosController extends Controller
                         'menu_id' => $items->first()['menu_id'],
                         'name' => $items->first()['name'],
                         'quantity' => $items->sum('quantity'),
+                        'redeemed_quantity' => $items->sum('redeemed_quantity'),
                         'unit_price' => $items->first()['unit_price'],
                     ])->values()->all(),
                 'loyalty_items' => collect($sourceGroups)

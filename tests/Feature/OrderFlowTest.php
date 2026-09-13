@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Menu;
 use App\Models\Order;
+use App\Models\OrderDetail;
 use App\Models\Table;
 use App\Models\User;
 use App\Enums\TableStatus;
@@ -98,13 +99,20 @@ class OrderFlowTest extends TestCase
         $table = Table::where('name', 'T1')->firstOrFail();
         $table->update(['status' => TableStatus::Running, 'taken_at' => now()]);
 
-        Order::create([
+        $activeOrder = Order::create([
             'KOT' => 'KOT-RUNNING',
             'total' => 125.50,
             'table_id' => $table->id,
             'status' => OrderStatus::New,
             'order_type' => 'dine_in',
             'waiter_id' => $waiter->id,
+        ]);
+        $menu = Menu::where('shortcode', 'mc')->firstOrFail();
+        OrderDetail::create([
+            'order_id' => $activeOrder->id,
+            'menu_id' => $menu->id,
+            'quantity' => 1,
+            'unit_price' => $menu->price,
         ]);
         Order::create([
             'KOT' => 'KOT-CANCELLED',
@@ -120,7 +128,10 @@ class OrderFlowTest extends TestCase
             ->get(route('waiter.order', $table->id))
             ->assertOk()
             ->assertViewHas('existingTableTotal', 125.50)
+            ->assertViewHas('existingOrderItems', fn ($items) => $items->count() === 1)
             ->assertSee('Current table')
+            ->assertSee('Existing items')
+            ->assertSee($menu->name)
             ->assertSee('After adding');
     }
 }

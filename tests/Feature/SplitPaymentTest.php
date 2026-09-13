@@ -142,6 +142,9 @@ class SplitPaymentTest extends TestCase
             ->get(route('pos.main', ['tableId' => $table->id]))
             ->assertOk()
             ->assertSee('Existing orders')
+            ->assertSee('Existing')
+            ->assertSee($menu->name)
+            ->assertViewHas('existingOrderItems', fn ($items) => $items->count() === 1)
             ->assertSee(number_format((float) $menu->price, 2))
             ->assertSee('max-h-[46vh]', false)
             ->assertSee('lg:flex-row', false)
@@ -155,6 +158,7 @@ class SplitPaymentTest extends TestCase
             ->assertOk()
             ->assertSee('max-h-[calc(100vh-1rem)]', false)
             ->assertSee('overflow-y-auto', false)
+            ->assertSee('id="finalBillItems"', false)
             ->assertSee('aria-label="Close table"', false);
 
         $script = file_get_contents(resource_path('js/pos.js'));

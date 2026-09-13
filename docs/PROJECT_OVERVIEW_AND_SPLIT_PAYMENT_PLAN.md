@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-09-14
 Branch: `local-lan-deployment`
-Revision reviewed: unpaid-preview loyalty implementation based on `9ff2ea4` (`Move loyalty redemption to final payment`)
+Revision reviewed: existing-order item visibility implementation
 
 ## Executive summary
 
@@ -26,7 +26,7 @@ Project-state documentation is updated as part of the same agent task that compl
 - Runtime: Docker Compose with PHP-FPM, Nginx, MySQL, Soketi, queue worker, and scheduler services.
 - Deployment: one installation per restaurant, available on a trusted local network through a reserved server IP.
 - Current development branch: `local-lan-deployment`.
-- Latest recorded automated verification: 140 tests passed with 795 assertions.
+- Latest recorded automated verification: 140 tests passed with 802 assertions.
 
 ## Implemented features
 
@@ -47,6 +47,7 @@ Project-state documentation is updated as part of the same agent task that compl
 - Table transfer by authorized users.
 - Protection against adding orders after bill finalization.
 - Editable order summaries before final billing.
+- Existing dine-in items remain visible when adding another order from the main POS or waiter screen.
 - Phone-safe Add Notes dialog behavior that replaces the saved selection on each save instead of duplicating notes.
 - Category-controlled physical stamp-card eligibility and cashier redemption only in Final Bill, for new or existing table orders and immediate takeaway bills.
 
@@ -61,6 +62,7 @@ Project-state documentation is updated as part of the same agent task that compl
 - Credit customers, partial credit settlement, payment history, references, and outstanding balances.
 - Finalized-bill locking and safe duplicate printing.
 - Zero-price loyalty reward lines with original-price, cashier, category, and redemption-time snapshots.
+- Itemized unpaid Bill Preview, Final Bill, finalized bill detail, and printed receipts; index pages remain concise summaries with detail actions.
 
 Split tender currently supports exactly two distinct non-credit methods; mixed credit/direct tender and more than two allocations are intentionally excluded. On selection, the interface proposes an exact half-and-remainder split, prevents the same method being chosen twice, and reports an amount equal to or above the bill total without replacing the operator's input.
 
@@ -139,7 +141,7 @@ Live status:
 
 The isolated Compose project `restaurant-pos-split-preview` uses port 8097 and separate seeded volumes. Production images containing the newer unpaid-preview flow were built and all six services were recreated on 2026-09-07. No migrations were pending, MySQL reported healthy, and `/health` returned `{"status":"ok"}`. The older local database volume was not migrated because its stored credentials no longer match the current deployment environment; it remains untouched pending credential recovery or an explicitly authorized recovery procedure.
 
-The port 8097 preview contains the split-payment, mobile/currency, and unpaid-preview loyalty changes. Automated and container health checks pass; phone layout and physical thermal-printer acceptance remain operator checks.
+The port 8097 preview contains the split-payment, mobile/currency, unpaid-preview loyalty, and existing-order item-visibility changes. It was rebuilt on 2026-09-14 with all six services running, healthy MySQL and Nginx, no pending migrations, and a passing HTTP health check. Automated and container health checks pass; phone layout and physical thermal-printer acceptance remain operator checks.
 
 ## Known limitations
 

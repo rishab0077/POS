@@ -207,6 +207,11 @@
                         <select id="finalBillingSource" class="w-full border rounded p-2"></select>
                     </div>
 
+                    <div class="rounded-lg border border-gray-200 bg-white p-3">
+                        <p class="mb-2 font-semibold text-gray-900">Ordered items</p>
+                        <div id="finalBillItems" class="divide-y divide-gray-100"></div>
+                    </div>
+
                     <div id="finalLoyaltySection" class="hidden rounded-lg border border-amber-300 bg-amber-50 p-3">
                         <button type="button" id="showFinalLoyalty" class="w-full rounded bg-amber-500 px-3 py-2 font-semibold text-white">Redeem stamp card</button>
                         <div id="finalLoyaltyItems" class="hidden mt-3 space-y-2"></div>
@@ -453,6 +458,7 @@
             $("#finalDiscountType").on("change", () => updateFinalSplitRemainder(false));
             $("#finalBillingSource").on("change", () => {
                 finalLoyaltySelections = initialLoyaltySelections(finalLoyaltyCandidates());
+                renderFinalBillItems();
                 renderFinalLoyalty();
                 updateFinalSplitRemainder(false);
             });
@@ -683,6 +689,7 @@
             $("#finalSplitPaymentFields").addClass("hidden");
             finalLoyaltySelections = loyaltySelections || initialLoyaltySelections(finalLoyaltyCandidates());
             $("#finalLoyaltyItems").addClass("hidden");
+            renderFinalBillItems();
             renderFinalLoyalty();
             $("#finalBillModal").css("display", "flex");
         }
@@ -760,9 +767,7 @@
             );
         }
 
-        function summaryBillItems() {
-            const tableId = $("#summaryBillTableId").val();
-            const billingSource = $("#summaryBillingSource").val() || "all";
+        function billingItems(tableId, billingSource) {
             const group = billingGroupForTable(tableId);
 
             if (billingSource !== "all") {
@@ -773,9 +778,23 @@
         }
 
         function renderSummaryBillItems() {
-            const container = $("#summaryBillItems").empty();
+            renderBillItems("#summaryBillItems", billingItems(
+                $("#summaryBillTableId").val(),
+                $("#summaryBillingSource").val() || "all"
+            ));
+        }
 
-            summaryBillItems().forEach(item => {
+        function renderFinalBillItems() {
+            renderBillItems("#finalBillItems", billingItems(
+                $("#finalBillTableId").val(),
+                $("#finalBillingSource").val() || "all"
+            ));
+        }
+
+        function renderBillItems(selector, items) {
+            const container = $(selector).empty();
+
+            items.forEach(item => {
                 const row = $("<div>", { class: "flex items-start justify-between gap-3 py-2 text-sm" });
                 const description = $("<div>");
                 description.append($("<div>", { class: "font-medium text-gray-900", text: `${item.name} × ${item.quantity}` }));

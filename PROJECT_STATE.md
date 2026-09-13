@@ -21,7 +21,7 @@ This file is the shared handoff for the project. Every agent or chat that implem
 - Production images exclude Node.js and npm and include the MariaDB backup client and MySQL 8 authentication connector required by `backup:database`.
 - `npm ci` and the production frontend build complete with zero reported npm vulnerabilities.
 - Production uses the database queue; the test profile uses the synchronous queue.
-- Automated verification currently passes: **140 tests, 795 assertions**.
+- Automated verification currently passes: **140 tests, 802 assertions**.
 
 ## Completed work
 
@@ -279,6 +279,7 @@ Key files:
 - Fiscal snapshots split mixed paid/reward quantities into paid lines and explicit `NPR 0.00` loyalty lines while preserving the original unit price, category, approving cashier, approval time, and proportional inventory-consumption snapshot.
 - Browser and ESC/POS receipts label the zero-price item as a loyalty reward and show its regular price. Bill details and the discount report expose redemption quantities and promotional value.
 - Item and category sales reports count all served quantities but exclude the rewarded units from sales revenue.
+- Existing dine-in menu lines are visible wherever an operator acts on an existing bill: the main POS order screen shows read-only existing lines alongside editable new items, the waiter order screen pairs its current-table total with the existing lines, and Final Bill shows the selected billing source's ordered items. Bill Preview, finalized bill detail, and browser/thermal receipts remain itemized; table, bill, and credit index pages intentionally remain compact summaries with detail actions.
 - Release verification completed on 2026-09-14: focused itemized unpaid-preview and final-payment loyalty coverage passed with 5 tests and 52 assertions; the complete suite passed with 140 tests and 793 assertions; JavaScript syntax, the Vite production build, Blade rendering through HTTP tests, and `git diff --check` passed.
 - Production images for the isolated `restaurant-pos-split-preview` stack were rebuilt with the unpaid-preview flow, all six services were recreated and started, no migrations were pending, MySQL reported healthy, and `/health` returned `{"status":"ok"}`. Amber still runs the split-only release; repeat the migration plus phone/thermal-printer smoke test before enabling loyalty there.
 - CBMS remains disabled. During controlled acceptance, confirm with the restaurant's tax adviser/IRD that an item retained on the invoice at zero payable price is the accepted treatment for this physical-card promotion before enabling automatic delivery.
@@ -493,3 +494,7 @@ CBMS remains off with `CBMS_ENABLED=false`. This allows normal local use and rec
 - Confirmed loyalty reporting remains available under **Reporting → Discounts**, with free-item quantity, original promotional value, invoice, item, category, and approving cashier; normal item/category reports count served reward units without treating them as revenue.
 - Verified optional staff email and loyalty reporting with 16 focused tests and 119 assertions, then passed the complete suite with 140 tests and 795 assertions.
 - Rebuilt the isolated preview, ran `2026_09_14_000001_make_user_email_optional`, and confirmed `{"status":"ok"}` from `/health`. Existing staff emails and transaction history were preserved; Amber remains unchanged.
+- Fixed existing-order visibility on the main POS order screen, waiter order screen, and table Final Bill modal so a displayed existing total is accompanied by its menu lines. Reused the existing billing-source item data and left VAT calculation unchanged.
+- Audited related billing surfaces: unpaid Bill Preview, finalized bill detail, and printed receipts were already itemized; table, bill, and credit index pages remain summary lists by design.
+- Verified the visibility change with 12 focused tests and 128 assertions, JavaScript syntax validation, and the complete suite with 140 tests and 802 assertions.
+- Rebuilt and recreated the isolated port 8097 preview with the itemized existing-order views, confirmed no pending migrations, all six services running with healthy MySQL and Nginx, and HTTP 200 with `{"status":"ok"}` from `/health`.

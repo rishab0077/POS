@@ -30,6 +30,19 @@
         </header>
 
         <main class="p-4 pb-48 sm:pb-32">
+            @if ($existingOrderItems->isNotEmpty())
+                <section class="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3 shadow-sm">
+                    <h2 class="mb-2 font-semibold text-blue-950">Existing items</h2>
+                    <div class="divide-y divide-blue-100">
+                        @foreach ($existingOrderItems as $item)
+                            <div class="flex justify-between gap-3 py-2 text-sm">
+                                <span>{{ $item['name'] }} × {{ $item['quantity'] }}</span>
+                                <strong>NPR {{ number_format($item['unit_price'] * $item['quantity'], 2) }}</strong>
+                            </div>
+                        @endforeach
+                    </div>
+                </section>
+            @endif
             <div class="space-y-3">
                 <template x-for="category in categories" :key="category.id">
                     <div class="bg-white rounded-lg shadow">

@@ -27,7 +27,7 @@ function renderOrderTable() {
     var count = 0;
 
     // if no items are present in the order
-    if (orderItems.length === 0) {
+    if (orderItems.length === 0 && existingOrderItemCount === 0) {
         orderItemsBody.append(noitemsContainer);
     } else {
         orderItems.forEach((item) => {
@@ -50,7 +50,7 @@ function renderOrderTable() {
         });
     }
 
-    $("#item-count").text(count);
+    $("#item-count").text(count + existingOrderItemCount);
 
     if (!$("#final-payment-panel").hasClass("hidden")) {
         renderCheckoutLoyalty();
