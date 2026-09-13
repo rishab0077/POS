@@ -114,6 +114,8 @@ class LoyaltyRewardTest extends TestCase
         $this->get(route('pos.tables'))
             ->assertOk()
             ->assertSee('Bill Preview')
+            ->assertSee('Ordered items')
+            ->assertSee('summaryBillingSourceWrapper')
             ->assertSee('Redeem loyalty card')
             ->assertSee('Proceed to Payment');
 
@@ -124,6 +126,8 @@ class LoyaltyRewardTest extends TestCase
             'loyalty_rewards' => [['menu_id' => $menu->id, 'quantity' => 1]],
         ])->assertOk()
             ->assertJsonPath('billAmount', fn ($amount) => (float) $amount === (float) $menu->price)
+            ->assertJsonPath('billingGroup.items.0.name', $menu->name)
+            ->assertJsonPath('billingGroup.items.0.quantity', 2)
             ->assertJsonPath('billingGroup.loyalty_items.0.redeemed_quantity', 1);
 
         $previewBill = Bill::firstOrFail();

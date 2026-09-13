@@ -133,9 +133,13 @@
                 </div>
                 <div class="modal-body space-y-4">
                     <input type="hidden" id="summaryBillTableId" value="0">
-                    <div>
+                    <div id="summaryBillingSourceWrapper">
                         <label for="summaryBillingSource" class="block text-sm font-semibold text-gray-700 mb-2">Orders</label>
                         <select id="summaryBillingSource" class="w-full border rounded p-2"></select>
+                    </div>
+                    <div class="rounded-lg border border-gray-200 bg-white p-3">
+                        <p class="mb-2 font-semibold text-gray-900">Ordered items</p>
+                        <div id="summaryBillItems" class="divide-y divide-gray-100"></div>
                     </div>
                     <div id="summaryLoyaltySection" class="hidden rounded-lg border border-amber-300 bg-amber-50 p-3">
                         <p class="font-semibold text-amber-950">Redeem loyalty card</p>
@@ -454,6 +458,7 @@
             });
             $("#summaryBillingSource").on("change", () => {
                 summaryLoyaltySelections = initialLoyaltySelections(summaryLoyaltyCandidates());
+                renderSummaryBillItems();
                 renderSummaryLoyalty();
             });
             $("#showFinalLoyalty").on("click", () => $("#finalLoyaltyItems").toggleClass("hidden"));
@@ -556,8 +561,9 @@
 
         function triggerSummaryBill(tableId) {
             $("#summaryBillTableId").val(tableId);
-            populateBillingSourceSelect(tableId, "#summaryBillingSource");
+            populateBillingSourceSelect(tableId, "#summaryBillingSource", "#summaryBillingSourceWrapper");
             summaryLoyaltySelections = initialLoyaltySelections(summaryLoyaltyCandidates());
+            renderSummaryBillItems();
             renderSummaryLoyalty();
             $("#summaryBillModal").css("display", "flex");
         }
@@ -752,6 +758,32 @@
                 $("#summaryBillTableId").val(),
                 $("#summaryBillingSource").val() || "all"
             );
+        }
+
+        function summaryBillItems() {
+            const tableId = $("#summaryBillTableId").val();
+            const billingSource = $("#summaryBillingSource").val() || "all";
+            const group = billingGroupForTable(tableId);
+
+            if (billingSource !== "all") {
+                return (group.sources || []).find(item => String(item.id) === String(billingSource))?.items || [];
+            }
+
+            return group.items || [];
+        }
+
+        function renderSummaryBillItems() {
+            const container = $("#summaryBillItems").empty();
+
+            summaryBillItems().forEach(item => {
+                const row = $("<div>", { class: "flex items-start justify-between gap-3 py-2 text-sm" });
+                const description = $("<div>");
+                description.append($("<div>", { class: "font-medium text-gray-900", text: `${item.name} × ${item.quantity}` }));
+                description.append($("<div>", { class: "text-xs text-gray-500", text: `NPR ${formatMoney(item.unit_price)} each` }));
+                row.append(description);
+                row.append($("<strong>", { class: "shrink-0", text: `NPR ${formatMoney(Number(item.unit_price) * Number(item.quantity))}` }));
+                container.append(row);
+            });
         }
 
         function summaryLoyaltyValue() {
@@ -1133,6 +1165,7 @@
                         if (response.billingGroup) {
                             tableBillingGroups[String(tableId)] = response.billingGroup;
                             summaryLoyaltySelections = initialLoyaltySelections(summaryLoyaltyCandidates());
+                            renderSummaryBillItems();
                             renderSummaryLoyalty();
                         }
                         alert("Unpaid bill preview queued for printing. You can now proceed to payment.");

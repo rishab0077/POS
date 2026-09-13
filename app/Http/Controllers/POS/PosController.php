@@ -557,6 +557,7 @@ class PosController extends Controller
                         'name' => $sourceName,
                         'total' => 0,
                         'orders' => 0,
+                        'items' => [],
                         'loyalty_items' => [],
                     ];
                 }
@@ -565,6 +566,19 @@ class PosController extends Controller
                 $sourceGroups[$sourceTableId]['orders']++;
 
                 foreach ($order->orderDetails as $detail) {
+                    $itemKey = $detail->menu_id . ':' . $detail->unit_price;
+                    if (!isset($sourceGroups[$sourceTableId]['items'][$itemKey])) {
+                        $sourceGroups[$sourceTableId]['items'][$itemKey] = [
+                            'key' => $itemKey,
+                            'menu_id' => $detail->menu_id,
+                            'name' => $detail->menu?->name ?? 'Deleted menu item',
+                            'quantity' => 0,
+                            'unit_price' => (float) $detail->unit_price,
+                        ];
+                    }
+
+                    $sourceGroups[$sourceTableId]['items'][$itemKey]['quantity'] += (int) $detail->quantity;
+
                     if (!$detail->menu?->category->contains('loyalty_eligible', true)) {
                         continue;
                     }
@@ -586,6 +600,7 @@ class PosController extends Controller
             }
 
             foreach ($sourceGroups as &$sourceGroup) {
+                $sourceGroup['items'] = array_values($sourceGroup['items']);
                 $sourceGroup['loyalty_items'] = array_values($sourceGroup['loyalty_items']);
             }
             unset($sourceGroup);
@@ -593,6 +608,16 @@ class PosController extends Controller
             $groups[$tableId] = [
                 'total' => array_sum(array_column($sourceGroups, 'total')),
                 'sources' => array_values($sourceGroups),
+                'items' => collect($sourceGroups)
+                    ->flatMap(fn (array $source) => $source['items'])
+                    ->groupBy('key')
+                    ->map(fn ($items) => [
+                        'key' => $items->first()['key'],
+                        'menu_id' => $items->first()['menu_id'],
+                        'name' => $items->first()['name'],
+                        'quantity' => $items->sum('quantity'),
+                        'unit_price' => $items->first()['unit_price'],
+                    ])->values()->all(),
                 'loyalty_items' => collect($sourceGroups)
                     ->flatMap(fn (array $source) => $source['loyalty_items'])
                     ->groupBy('menu_id')
