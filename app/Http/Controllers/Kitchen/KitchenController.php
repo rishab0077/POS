@@ -8,6 +8,11 @@ use App\Http\Service\RestaurantService;
 use App\Models\Order;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Facades\DB;
+use App\Helpers\TableHelper;
+use App\Models\Table;
+use App\Models\BillOrder;
 
 class KitchenController extends Controller
 {
@@ -55,19 +60,36 @@ class KitchenController extends Controller
             'notes' => ['nullable', 'string'],
         ]);
 
-        $order = Order::whereKey($request->orderId)
-            ->whereIn('status', [OrderStatus::New->value, OrderStatus::Processing->value])
-            ->firstOrFail();
+        return DB::transaction(function () use ($request) {
+            $tableId = Order::whereKey($request->orderId)->value('table_id');
+            if ($tableId) {
+                Table::lockForUpdate()->findOrFail($tableId);
+            }
+            $order = Order::whereKey($request->orderId)
+                ->whereIn('status', [OrderStatus::New->value, OrderStatus::Processing->value])
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        $order->update([
-            'status' => OrderStatus::Cancelled->value,
-            'cancelled_at' => now(),
-            'cancelled_by' => auth()->id(),
-            'cancellation_reason' => $request->reason,
-            'cancellation_notes' => $request->notes,
-        ]);
+            if (BillOrder::where('order_id', $order->id)->whereHas('bill', fn ($query) => $query
+                ->whereNotNull('locked_at')->orWhereNotNull('printed_at')->orWhere('status', 'closed'))->exists()) {
+                throw ValidationException::withMessages(['orderId' => 'Invoiced orders cannot be cancelled. Use the return workflow.']);
+            }
 
-        return response()->json(['message' => 'Order cancelled successfully']);
+            $order->update([
+                'status' => OrderStatus::Cancelled->value,
+                'cancelled_at' => now(),
+                'cancelled_by' => auth()->id(),
+                'cancellation_reason' => $request->reason,
+                'cancellation_notes' => $request->notes,
+            ]);
+
+            if ($tableId && !Order::where('table_id', $tableId)
+                ->whereNotIn('status', [OrderStatus::Closed->value, OrderStatus::Cancelled->value])->exists()) {
+                TableHelper::markTableAsPaid($tableId);
+            }
+
+            return response()->json(['message' => 'Order cancelled successfully']);
+        });
     }
 
 

@@ -1,6 +1,6 @@
 # Restaurant POS — Living Project State
 
-Last updated: 2026-09-14
+Last updated: 2026-10-13
 
 This file is the shared handoff for the project. Every agent or chat that implements a material repository change must update it in the same task, as required by `AGENTS.md`; plans must remain clearly separated from completed work.
 
@@ -21,9 +21,35 @@ This file is the shared handoff for the project. Every agent or chat that implem
 - Production images exclude Node.js and npm and include the MariaDB backup client and MySQL 8 authentication connector required by `backup:database`.
 - `npm ci` and the production frontend build complete with zero reported npm vulnerabilities.
 - Production uses the database queue; the test profile uses the synchronous queue.
-- Automated verification currently passes: **140 tests, 802 assertions**.
+- Automated verification currently passes: **156 tests, 875 assertions**, plus two JavaScript workflow regressions.
 
 ## Completed work
+
+### 2026-10-13 — LAN reliability repairs (application complete; deployment pending)
+
+The ten audit findings were verified through failing baseline regressions and tracing their callers before implementation. Repairs were completed in phases; these changes are in the repository and have not been deployed to Amber or the port 8097 preview.
+
+| Finding | Verified cause and implemented correction |
+|---|---|
+| 1. Settled table cannot accept the next order without refreshing | The click handler captured the initial status. It now reads the current table status after settlement/finalization. |
+| 2. Cancellation leaves a table occupied or cancels an invoiced ticket | Cancellation now locks the table and order, rejects finalized tickets, and releases the table only after its last active unpaid ticket is cancelled. |
+| 3. Failed checkout leaves an order behind, encouraging duplicates on retry | Order creation, billing, print jobs, and audit records now share a transaction; kitchen broadcasts occur after commit. A failed high-value checkout leaves no order or bill. |
+| 4. Settlement can expose an available table before closing its orders | Settlement closes orders and bills atomically before releasing the table. Submission, billing, cancellation, and settlement coordinate on the same table lock. Table-cache invalidation also runs after commit. |
+| 5. Simultaneous orders can reuse a KOT number | KOT generation now reserves a daily number under a row lock in the existing sequence table, initialized above the largest existing ticket suffix. |
+| 6. Menu deletion destroys order lines; menu edits rewrite sales identity | Referenced menu deletion is rejected. Item/category reports use immutable fiscal item snapshots, with a fallback for older bills without snapshots and the existing bill-date/deletion filters. |
+| 7. Stale purchase requests post or void stock twice | Purchase posting and voiding reload and lock the invoice before checking its status or payments. |
+| 8. Supplier payments can exceed the invoice balance or pay a draft | Invoice-linked payments lock a posted invoice, recalculate its balance, validate the payment, and save/recalculate within one transaction. |
+| 9. Simultaneous returns can refund the same units twice | Credit-note issuance locks the original bill before reading accumulated return quantities. |
+| 10. KOT polling misses other operators/status changes or repeatedly reloads | Polling compares all visible pending ticket IDs and statuses, handles an empty screen, and matches the waiter table-only view. |
+
+- Phase 1: table reuse, cancellation, failed checkout, settlement, and polling repaired.
+- Phase 2: ticket numbering and historical menu/report integrity repaired.
+- Phase 3: purchase, supplier-payment, and return concurrency repaired; independent PHP worker processes reproduce the financial races and verify the fixes.
+- Phase 4: complete regression, syntax, asset, Blade, and migration verification passed. Testing also exposed an older billing migration rollback bug: its `down()` dropped the parent first and misspelled `bill_orders`. The child now drops first; the complete isolated migration batch rolls back successfully.
+
+Verification: 156 PHP tests / 875 assertions; 17 focused workflow/payment/report tests / 162 assertions before the final full run; two Node workflow regressions; PHP syntax checks; Docker test-image build including the production Vite build; Blade compilation; complete migration rollback on the disposable `restaurant-pos-automated` database; and `git diff --check`. No live IRD requests or production-data migrations were performed.
+
+Remaining release steps: back up the actual installation, rebuild and deploy its application/frontend/worker images, then verify closing and reusing a table, cancellation, KOT updates from two staff devices, and physical receipt printing. No code fix is blocked. Live installation and hardware acceptance remain pending. Existing duplicate KOTs or previously deleted history are not rewritten; old bills without snapshots cannot recover missing sale-time names/categories. No new forward migration is required by these repairs, but any previously pending release migrations still apply.
 
 ### Generic product conversion
 
@@ -329,6 +355,8 @@ Key files:
 
 ## Current readiness
 
+The 2026-10-13 LAN reliability repairs have passed isolated automated verification. Amber and the port 8097 preview have not been updated by this task; their previously recorded deployment state remains unchanged. Phone/browser and physical-printer acceptance of this repair release is still required after deployment.
+
 The core POS, including exact two-method split tender payments and physical stamp-card loyalty rewards, and the local CBMS sales-bill and partial/full credit-note outboxes are working and covered by automated tests. Internal receivable reversal, payment-refund records, net reporting, and waste-by-default returned-item handling are implemented. Phase 7A production-readiness and Phase 7B controlled-acceptance tooling are complete. The loyalty release has passed an isolated six-service Compose migration and health smoke test. An operator-provided diagnostic from the Amber POS installation confirmed the reserved LAN address, private network profile, scoped firewall rule, six healthy/running Compose services, HTTP health checks, current split-payment migration, scheduler heartbeat, database backup, an online Windows print station, and its logon-triggered agent task; Amber has not yet received the loyalty migration. The live Phase 7B acceptance exercise still requires taxpayer credentials, IRD coordination, and operator verification in the IRD portal. The application is **not yet approved for live IRD CBMS use**, and no live acceptance test has been performed.
 
 CBMS remains off with `CBMS_ENABLED=false`. This allows normal local use and records finalized invoices as pending submissions without contacting IRD.
@@ -357,6 +385,7 @@ CBMS remains off with `CBMS_ENABLED=false`. This allows normal local use and rec
 
 ## Verification history
 
+- 2026-10-13: phased LAN reliability repairs — complete suite 156 passed, 875 assertions; focused suite 17 passed, 162 assertions; two JavaScript regressions passed. Independent-worker purchase/payment/return races, PHP syntax, production Vite build, Docker test-image build, Blade compilation, complete isolated migration rollback, and diff checks passed. Live restaurant deployment was not changed.
 - 2026-07-17: fiscal snapshot focused tests — 2 passed, 12 assertions.
 - 2026-07-17: CBMS and fiscal focused tests — 4 passed, 26 assertions.
 - 2026-07-17: complete regression suite — 116 passed, 576 assertions.
@@ -424,6 +453,13 @@ CBMS remains off with `CBMS_ENABLED=false`. This allows normal local use and rec
 - 2026-09-14: rebuilt and recreated the isolated port 8097 preview with the corrected item list, confirmed no pending migrations, and received `{"status":"ok"}` from `/health`.
 
 ## Change log
+
+### 2026-10-13
+
+- Completed and verified all ten LAN audit fixes across table workflow, atomic checkout/settlement, KOT allocation/polling, immutable reports, protected menu history, and financial concurrency.
+- Added workflow, stale-request, independent-process financial concurrency, and JavaScript regression coverage. Updated split-payment validation coverage to expect failed billing to roll back its draft while retaining the existing order.
+- Corrected the existing billing migration rollback order/table name and verified the complete rollback on the isolated test database.
+- Recorded deployment and phone/thermal-printer acceptance as pending; no Amber or preview deployment was performed.
 
 ### 2026-07-17
 

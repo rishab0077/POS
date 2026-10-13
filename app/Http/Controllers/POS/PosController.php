@@ -120,250 +120,253 @@ class PosController extends Controller
 
     public function billTable(Request $request, AuditLogger $audit)
     {
-        $tableId = $request->tableId;
-        $paymentMethods = array_keys(config('pos.payments'));
-        $directMethods = array_values(array_diff($paymentMethods, ['credit']));
-        $request->validate([
-            'billAction' => ['nullable', Rule::in(['summary', 'final'])],
-            'billingSource' => ['nullable', 'string'],
-            'paymentType' => ['nullable', Rule::in([...$paymentMethods, 'split'])],
-            'payments' => ['nullable', 'required_if:paymentType,split', 'array', 'size:2'],
-            'payments.*.method' => ['required', Rule::in($directMethods)],
-            'payments.*.amount' => ['required', 'regex:/^\d+(?:\.\d{1,2})?$/'],
-            'payments.*.reference_no' => ['nullable', 'string', 'max:100'],
-            'print_copies' => ['nullable', Rule::in(['customer', 'both'])],
-            'discount_type' => ['nullable', Rule::in(['amount', 'percentage'])],
-            'discount_value' => ['nullable', 'numeric', 'min:0'],
-            'discount_reason' => ['nullable', 'string', 'max:255'],
-            'loyalty_rewards' => ['nullable', 'array'],
-            'loyalty_rewards.*.menu_id' => ['required', 'integer', 'distinct', 'exists:menus,id'],
-            'loyalty_rewards.*.quantity' => ['required', 'integer', 'min:1', 'max:999'],
-        ]);
+        return DB::transaction(function () use ($request, $audit) {
+            $request->validate(['tableId' => ['required', 'integer', 'exists:tables,id']]);
+            $tableId = $request->tableId;
+            Table::lockForUpdate()->findOrFail($tableId);
+            $paymentMethods = array_keys(config('pos.payments'));
+            $directMethods = array_values(array_diff($paymentMethods, ['credit']));
+            $request->validate([
+                'billAction' => ['nullable', Rule::in(['summary', 'final'])],
+                'billingSource' => ['nullable', 'string'],
+                'paymentType' => ['nullable', Rule::in([...$paymentMethods, 'split'])],
+                'payments' => ['nullable', 'required_if:paymentType,split', 'array', 'size:2'],
+                'payments.*.method' => ['required', Rule::in($directMethods)],
+                'payments.*.amount' => ['required', 'regex:/^\d+(?:\.\d{1,2})?$/'],
+                'payments.*.reference_no' => ['nullable', 'string', 'max:100'],
+                'print_copies' => ['nullable', Rule::in(['customer', 'both'])],
+                'discount_type' => ['nullable', Rule::in(['amount', 'percentage'])],
+                'discount_value' => ['nullable', 'numeric', 'min:0'],
+                'discount_reason' => ['nullable', 'string', 'max:255'],
+                'loyalty_rewards' => ['nullable', 'array'],
+                'loyalty_rewards.*.menu_id' => ['required', 'integer', 'distinct', 'exists:menus,id'],
+                'loyalty_rewards.*.quantity' => ['required', 'integer', 'min:1', 'max:999'],
+            ]);
 
-        $notes = $request->notes ? $request->notes : '';
-        $sourceTableId = $this->billingSourceTableId($request->input('billingSource'));
-        $buyerData = $request->only([
-            'buyer_name',
-            'buyer_pan',
-            'buyer_address',
-            'discount_reason',
-            'credit_customer_name',
-            'credit_customer_contact',
-        ]);
-        $billAction = $request->input('billAction', 'final');
+            $notes = $request->notes ? $request->notes : '';
+            $sourceTableId = $this->billingSourceTableId($request->input('billingSource'));
+            $buyerData = $request->only([
+                'buyer_name',
+                'buyer_pan',
+                'buyer_address',
+                'discount_reason',
+                'credit_customer_name',
+                'credit_customer_contact',
+            ]);
+            $billAction = $request->input('billAction', 'final');
 
-        if (
-            (float) $request->input('discount_value', 0) > 0
-            && !app(RecentAuthenticationService::class)->isRecent($request)
-        ) {
-            $request->session()->put('auth.step_up_return_to', route('pos.tables'));
+            if (
+                (float) $request->input('discount_value', 0) > 0
+                && !app(RecentAuthenticationService::class)->isRecent($request)
+            ) {
+                $request->session()->put('auth.step_up_return_to', route('pos.tables'));
 
-            return response()->json([
-                'message' => 'Confirm your password and MFA before applying a discount.',
-                'step_up_url' => route('password.confirm'),
-            ], 423);
-        }
+                return response()->json([
+                    'message' => 'Confirm your password and MFA before applying a discount.',
+                    'step_up_url' => route('password.confirm'),
+                ], 423);
+            }
 
-        if ($request->has('printDuplicateBill')) {
-            if (!$this->restaurantService->hasEnabledPrintStationFor('counter')) {
+            if ($request->has('printDuplicateBill')) {
+                if (!$this->restaurantService->hasEnabledPrintStationFor('counter')) {
+                    throw ValidationException::withMessages([
+                        'printer' => 'Configure an enabled counter print station before requesting a duplicate bill.',
+                    ]);
+                }
+
+                $billId = BillHelper::getLatestBillId($tableId);
+                $job = $this->printJobService->queueBill($billId, true);
+
+                $audit->record('duplicate_bill_requested', 'billing', [
+                    'subject' => $job,
+                    'metadata' => [
+                        'summary' => "Duplicate bill print requested for bill #{$billId}.",
+                        'bill_id' => $billId,
+                        'print_job_id' => $job->id,
+                    ],
+                ]);
+
+                return response()->json(['status' => 'success', 'message' => 'Duplicate bill queued for printing']);
+            }
+
+            if (
+                $billAction === 'summary'
+                && !$this->restaurantService->hasEnabledPrintStationFor('counter')
+            ) {
                 throw ValidationException::withMessages([
-                    'printer' => 'Configure an enabled counter print station before requesting a duplicate bill.',
+                    'printer' => 'Configure an enabled counter print station before printing an order summary.',
                 ]);
             }
 
-            $billId = BillHelper::getLatestBillId($tableId);
-            $job = $this->printJobService->queueBill($billId, true);
+            $billId = BillHelper::createTableBill($tableId, $notes, null, 0, [], $sourceTableId);
 
-            $audit->record('duplicate_bill_requested', 'billing', [
-                'subject' => $job,
-                'metadata' => [
-                    'summary' => "Duplicate bill print requested for bill #{$billId}.",
-                    'bill_id' => $billId,
-                    'print_job_id' => $job->id,
-                ],
-            ]);
+            if ($billAction === 'summary') {
+                if ($request->has('loyalty_rewards')) {
+                    $bill = BillHelper::updateLoyaltyRewardsForPreview(
+                        $billId,
+                        $request->input('loyalty_rewards', [])
+                    );
+                } else {
+                    $bill = Bill::findOrFail($billId);
+                }
 
-            return response()->json(['status' => 'success', 'message' => 'Duplicate bill queued for printing']);
-        }
+                $job = $this->printJobService->queueSummaryBill($billId);
 
-        if (
-            $billAction === 'summary'
-            && !$this->restaurantService->hasEnabledPrintStationFor('counter')
-        ) {
-            throw ValidationException::withMessages([
-                'printer' => 'Configure an enabled counter print station before printing an order summary.',
-            ]);
-        }
+                $audit->record('summary_bill_requested', 'billing', [
+                    'subject' => $job,
+                    'metadata' => [
+                        'summary' => "Summary bill print requested for bill #{$billId}.",
+                        'bill_id' => $billId,
+                        'print_job_id' => $job->id,
+                        'loyalty_rewards' => $request->input('loyalty_rewards', []),
+                    ],
+                ]);
 
-        $billId = BillHelper::createTableBill($tableId, $notes, null, 0, [], $sourceTableId);
-
-        if ($billAction === 'summary') {
-            if ($request->has('loyalty_rewards')) {
-                $bill = BillHelper::updateLoyaltyRewardsForPreview(
-                    $billId,
-                    $request->input('loyalty_rewards', [])
-                );
-            } else {
-                $bill = Bill::findOrFail($billId);
+                return response()->json([
+                    'status' => 'success',
+                    'billId' => $billId,
+                    'billAmount' => (float) $bill->bill_amount,
+                    'billingGroup' => $this->billingGroupsForTables([(int) $tableId])[(int) $tableId] ?? null,
+                    'message' => 'Unpaid bill preview queued for printing',
+                ]);
             }
 
-            $job = $this->printJobService->queueSummaryBill($billId);
+            $paymentType = $request->paymentType ? $request->paymentType : 'cash';
+            $discountData = $request->only(['discount_type', 'discount_value']);
+            $bill = BillHelper::finalizeBill(
+                $billId,
+                $paymentType,
+                $buyerData,
+                $discountData,
+                false,
+                $request->input('payments', []),
+                $request->input('loyalty_rewards', [])
+            );
+            $bill->load('orders.orderDetails.menu');
 
-            $audit->record('summary_bill_requested', 'billing', [
-                'subject' => $job,
+            $audit->record('bill_finalized', 'billing', [
+                'subject' => $bill,
+                'after' => $bill->only([
+                    'id',
+                    'bill_id',
+                    'invoice_no',
+                    'table_id',
+                    'source_table_id',
+                    'bill_amount',
+                    'discount',
+                    'discount_type',
+                    'discount_value',
+                    'taxable_amount',
+                    'vat_amount',
+                    'grand_total',
+                    'payment_method',
+                    'status',
+                    'locked_at',
+                    'locked_by',
+                ]),
                 'metadata' => [
-                    'summary' => "Summary bill print requested for bill #{$billId}.",
-                    'bill_id' => $billId,
-                    'print_job_id' => $job->id,
-                    'loyalty_rewards' => $request->input('loyalty_rewards', []),
+                    'summary' => "Bill {$bill->invoice_no} finalized.",
+                    'order_ids' => $bill->orders->pluck('id')->all(),
+                    'payments' => $bill->payments->map->only(['payment_method', 'amount', 'reference_no'])->all(),
                 ],
             ]);
+
+            if ((float) $bill->discount > 0) {
+                $audit->record('discount_applied', 'billing', [
+                    'subject' => $bill,
+                    'after' => $bill->only(['id', 'discount', 'discount_type', 'discount_value', 'discount_reason', 'discount_approved_by']),
+                    'metadata' => ['summary' => "Discount applied to bill {$bill->invoice_no}."],
+                ]);
+            }
+
+            $loyaltyItems = $bill->orders->flatMap->orderDetails->where('loyalty_reward_quantity', '>', 0);
+            if ($loyaltyItems->isNotEmpty()) {
+                $audit->record('loyalty_reward_applied', 'billing', [
+                    'subject' => $bill,
+                    'metadata' => [
+                        'summary' => 'Physical stamp-card rewards applied during final payment.',
+                        'items' => $loyaltyItems->map(fn (OrderDetail $item) => [
+                            'menu_id' => $item->menu_id,
+                            'item_name' => $item->menu?->name,
+                            'quantity' => (int) $item->loyalty_reward_quantity,
+                            'original_unit_price' => (float) $item->loyalty_original_unit_price,
+                        ])->values()->all(),
+                    ],
+                ]);
+            }
+
+            $tableStatus = 'running';
+            if (BillHelper::activeTableOrdersFinalized($tableId)) {
+                TableHelper::markTableAsFinalized($tableId);
+                $tableStatus = 'printed';
+            }
+
+            $counterPrinterConfigured = $this->restaurantService->hasEnabledPrintStationFor('counter');
+            $counterPrinterOnline = $this->restaurantService->hasOnlinePrintStationFor('counter');
+
+            if ($counterPrinterConfigured) {
+                $this->printJobService->queueBillCopies($bill->id, $request->input('print_copies'));
+            }
+
+            $message = match (true) {
+                $counterPrinterOnline => 'Bill finalized and queued for printing.',
+                $counterPrinterConfigured => 'Bill finalized. The counter print station is offline, so the print job will remain pending.',
+                default => 'Bill finalized without a print job because no enabled counter print station is configured.',
+            };
 
             return response()->json([
                 'status' => 'success',
-                'billId' => $billId,
-                'billAmount' => (float) $bill->bill_amount,
-                'billingGroup' => $this->billingGroupsForTables([(int) $tableId])[(int) $tableId] ?? null,
-                'message' => 'Unpaid bill preview queued for printing',
+                'billId' => $bill->id,
+                'tableStatus' => $tableStatus,
+                'previewUrl' => route('pos.bill.preview', $bill->id, false),
+                'printerConfigured' => $counterPrinterConfigured,
+                'printerOnline' => $counterPrinterOnline,
+                'message' => $message,
             ]);
-        }
-
-        $paymentType = $request->paymentType ? $request->paymentType : 'cash';
-        $discountData = $request->only(['discount_type', 'discount_value']);
-        $bill = BillHelper::finalizeBill(
-            $billId,
-            $paymentType,
-            $buyerData,
-            $discountData,
-            false,
-            $request->input('payments', []),
-            $request->input('loyalty_rewards', [])
-        );
-        $bill->load('orders.orderDetails.menu');
-
-        $audit->record('bill_finalized', 'billing', [
-            'subject' => $bill,
-            'after' => $bill->only([
-                'id',
-                'bill_id',
-                'invoice_no',
-                'table_id',
-                'source_table_id',
-                'bill_amount',
-                'discount',
-                'discount_type',
-                'discount_value',
-                'taxable_amount',
-                'vat_amount',
-                'grand_total',
-                'payment_method',
-                'status',
-                'locked_at',
-                'locked_by',
-            ]),
-            'metadata' => [
-                'summary' => "Bill {$bill->invoice_no} finalized.",
-                'order_ids' => $bill->orders->pluck('id')->all(),
-                'payments' => $bill->payments->map->only(['payment_method', 'amount', 'reference_no'])->all(),
-            ],
-        ]);
-
-        if ((float) $bill->discount > 0) {
-            $audit->record('discount_applied', 'billing', [
-                'subject' => $bill,
-                'after' => $bill->only(['id', 'discount', 'discount_type', 'discount_value', 'discount_reason', 'discount_approved_by']),
-                'metadata' => ['summary' => "Discount applied to bill {$bill->invoice_no}."],
-            ]);
-        }
-
-        $loyaltyItems = $bill->orders->flatMap->orderDetails->where('loyalty_reward_quantity', '>', 0);
-        if ($loyaltyItems->isNotEmpty()) {
-            $audit->record('loyalty_reward_applied', 'billing', [
-                'subject' => $bill,
-                'metadata' => [
-                    'summary' => 'Physical stamp-card rewards applied during final payment.',
-                    'items' => $loyaltyItems->map(fn (OrderDetail $item) => [
-                        'menu_id' => $item->menu_id,
-                        'item_name' => $item->menu?->name,
-                        'quantity' => (int) $item->loyalty_reward_quantity,
-                        'original_unit_price' => (float) $item->loyalty_original_unit_price,
-                    ])->values()->all(),
-                ],
-            ]);
-        }
-
-        $tableStatus = 'running';
-        if (BillHelper::activeTableOrdersFinalized($tableId)) {
-            TableHelper::markTableAsFinalized($tableId);
-            $tableStatus = 'printed';
-        }
-
-        $counterPrinterConfigured = $this->restaurantService->hasEnabledPrintStationFor('counter');
-        $counterPrinterOnline = $this->restaurantService->hasOnlinePrintStationFor('counter');
-
-        if ($counterPrinterConfigured) {
-            $this->printJobService->queueBillCopies($bill->id, $request->input('print_copies'));
-        }
-
-        $message = match (true) {
-            $counterPrinterOnline => 'Bill finalized and queued for printing.',
-            $counterPrinterConfigured => 'Bill finalized. The counter print station is offline, so the print job will remain pending.',
-            default => 'Bill finalized without a print job because no enabled counter print station is configured.',
-        };
-
-        return response()->json([
-            'status' => 'success',
-            'billId' => $bill->id,
-            'tableStatus' => $tableStatus,
-            'previewUrl' => route('pos.bill.preview', $bill->id, false),
-            'printerConfigured' => $counterPrinterConfigured,
-            'printerOnline' => $counterPrinterOnline,
-            'message' => $message,
-        ]);
+        });
     }
 
 
     public function settleTable(Request $request)
     {
-        $tableId = $request->tableId;
+        $request->validate(['tableId' => ['required', 'integer', 'exists:tables,id']]);
+        return DB::transaction(function () use ($request) {
+            $tableId = $request->tableId;
 
-        $table = Table::find($tableId);
+            $table = Table::lockForUpdate()->findOrFail($tableId);
+            $orders = $table->orders()->whereNotIn('status', [OrderStatus::Closed->value, OrderStatus::Cancelled->value])
+                ->lockForUpdate()->get();
 
-        if (!$table) {
-            return response()->json(['status' => 'error', 'message' => 'Table not found']);
-        }
+            $finalBills = Bill::where('table_id', $request->tableId)
+                ->where('status', 'open')
+                ->where(function ($query) {
+                    $query->whereNotNull('locked_at')
+                        ->orWhereNotNull('printed_at');
+                })
+                ->get();
 
-        $finalBills = Bill::where('table_id', $request->tableId)
-            ->where('status', 'open')
-            ->where(function ($query) {
-                $query->whereNotNull('locked_at')
-                    ->orWhereNotNull('printed_at');
-            })
-            ->get();
+            if ($orders->isNotEmpty() && $finalBills->isEmpty()) {
+                throw ValidationException::withMessages(['bill' => 'No bill found for this table.']);
+            }
 
-        if ($finalBills->isEmpty()) {
-            throw ValidationException::withMessages(['bill' => 'No bill found for this table.']);
-        }
+            if ($orders->isNotEmpty() && !BillHelper::activeTableOrdersFinalized($tableId)) {
+                throw ValidationException::withMessages(['bill' => 'Print final bills for all active orders before settling this table.']);
+            }
 
-        if (!BillHelper::activeTableOrdersFinalized($tableId)) {
-            throw ValidationException::withMessages(['bill' => 'Print final bills for all active orders before settling this table.']);
-        }
+            foreach ($orders as $order) {
+                $order->status = OrderStatus::Closed;
+                $order->save();
+            }
 
-        TableHelper::markTableAsPaid($request->tableId);
+            foreach ($finalBills as $bill) {
+                $bill->status = 'closed';
+                $bill->save();
+            }
 
-        $orders = $table->orders()->whereNotIn('status', [OrderStatus::Closed->value, OrderStatus::Cancelled->value])->get();
+            TableHelper::markTableAsPaid($tableId);
 
-        foreach ($orders as $order) {
-            $order->status = OrderStatus::Closed;
-            $order->save();
-        }
-
-        foreach ($finalBills as $bill) {
-            $bill->status = 'closed';
-            $bill->save();
-        }
-
-        return response()->json(['status' => 'success', 'message' => 'Table settled']);
+            return response()->json(['status' => 'success', 'message' => 'Table settled']);
+        });
     }
 
     public function transferTable(Request $request, AuditLogger $audit)

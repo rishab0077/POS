@@ -80,24 +80,14 @@ function kotErrorMessage(error, fallback) {
 }
 
 function checkOrderUpdates() {
-    var lastOrderId = getLastOrderId();
-    console.log("Last Order Id:", lastOrderId);
     $.ajax({
         url: checkOrderUpdatesRoute,
         method: "GET",
         dataType: "json",
-        data: {
-            lastOrderId: lastOrderId,
-        },
         success: function (response) {
-            console.log(response);
-            if (
-                response.status === "success" &&
-                response.hasNewOrders === true
-            ) {
+            if (response.status === "success" && Array.isArray(response.orders) &&
+                orderState(response.orders) !== orderState(getVisibleOrders())) {
                 window.location.reload();
-            } else {
-                console.log("No new orders found");
             }
         },
         error: function (error) {
@@ -106,15 +96,14 @@ function checkOrderUpdates() {
     });
 }
 
-function getLastOrderId() {
-    var ids = $(".order-item")
+function getVisibleOrders() {
+    return $(".order-item")
         .map(function () {
-            return parseInt(this.id.replace("order", ""), 10);
-        })
-        .filter(function () {
-            return Number.isFinite(this);
+            return { id: Number(this.id.replace("order", "")), status: this.getAttribute("data-order-status") };
         })
         .get();
+}
 
-    return ids.length > 0 ? Math.max(...ids) : 0;
+function orderState(orders) {
+    return JSON.stringify(orders.map(order => [Number(order.id), order.status]).sort((a, b) => a[0] - b[0]));
 }

@@ -24,6 +24,7 @@ use Illuminate\Support\Facades\Log;
 use App\Services\PrintJobService;
 use App\Services\AuditLogger;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Facades\DB;
 
 class OrderController extends Controller
 {
@@ -41,151 +42,153 @@ class OrderController extends Controller
 
     public function submit(OrderSubmitRequest $request, AuditLogger $audit)
     {
-        $source = $request->source;
-        $tableId = $request->tableId;
-        $specialInstructions =  $request->specialInstructions ? implode(',',  $request->specialInstructions) :  null;
-        $isTableOrder = true;
-        $isPickUpOrder = $request->boolean('isPickUpOrder');
-        $kitchenModuleEnabled = $this->restaurantService->isKitchenModuleEnabled();
+        return DB::transaction(function () use ($request, $audit) {
+            $source = $request->source;
+            $tableId = $request->tableId;
+            $specialInstructions =  $request->specialInstructions ? implode(',',  $request->specialInstructions) :  null;
+            $isTableOrder = true;
+            $isPickUpOrder = $request->boolean('isPickUpOrder');
+            $kitchenModuleEnabled = $this->restaurantService->isKitchenModuleEnabled();
 
-        $this->authorizeOrderSource($source);
+            $this->authorizeOrderSource($source);
 
-        if ($request->filled('loyalty_rewards') && ($source !== 'pos' || (!$isPickUpOrder && !$request->boolean('billTable')))) {
-            throw ValidationException::withMessages([
-                'loyalty_rewards' => 'Loyalty rewards can only be applied during final payment.',
-            ]);
-        }
-
-        if (!$isPickUpOrder) {
-            $table = Table::findOrFail($tableId);
-
-            if (!in_array($table->status, [TableStatus::Available, TableStatus::Running, TableStatus::RunningKOT], true)) {
+            if ($request->filled('loyalty_rewards') && ($source !== 'pos' || (!$isPickUpOrder && !$request->boolean('billTable')))) {
                 throw ValidationException::withMessages([
-                    'tableId' => 'This table is finalized or unavailable. Close it before starting another order.',
+                    'loyalty_rewards' => 'Loyalty rewards can only be applied during final payment.',
                 ]);
             }
-        }
 
-        $order = $this->trustedOrder($request->input('order.orderItems', []));
-        if ($isPickUpOrder || $request->boolean('billTable')) {
-            $this->validateLoyaltyRewards(
-                $request->input('loyalty_rewards', []),
-                $order['orderItems'],
-                $isPickUpOrder ? null : (int) $tableId
-            );
-        }
-        $buyerData = $request->only(['buyer_name', 'buyer_pan', 'buyer_address', 'credit_customer_name', 'credit_customer_contact']);
+            if (!$isPickUpOrder) {
+                $table = Table::lockForUpdate()->findOrFail($tableId);
 
-        // if pick up order then set isTableOrder to false
-        if ($isPickUpOrder) {
-            $isTableOrder = false;
-        }
-
-        $commonData = collect([
-            'tableId' => $tableId,
-            'specialInstructions' => $specialInstructions,
-            'isPickUpOrder' => $isPickUpOrder,
-            'isTableOrder' => $isTableOrder,
-        ]);
-
-        if ($source === "waiter") {
-            $orderData = $this->processWaiterOrder($request, $commonData, $order);
-        } else if ($source === "pos") {
-            $orderData = $this->processPOSOrder($request, $commonData, $order);
-        }
-
-        // New Order if Kitchen Module is enabled else by default order status marked as served
-        $orderStatus = $kitchenModuleEnabled ? OrderStatus::New : OrderStatus::Served;
-        $orderData->put('status', $orderStatus);
-
-
-        // insert order
-        $response = $this->orderService->createOrder($orderData);
-
-        // if order submission failed
-        if ($response['status'] === "error") {
-            return response()->json($response, 500);
-        }
-
-        $kot = $response['data'];
-
-        // Table Marking
-
-        if ($isTableOrder) {
-            TableHelper::markTableAsRunning($tableId);
-        }
-
-
-        // Send event to kitchen module
-        if ($kitchenModuleEnabled) {
-            try {
-                event(new OrderSubmittedToKitchen($kot));
-            } catch (Exception $e) {
-                Log::error("Unable to connect with pusher api - internet issue");
+                if (!in_array($table->status, [TableStatus::Available, TableStatus::Running, TableStatus::RunningKOT], true)) {
+                    throw ValidationException::withMessages([
+                        'tableId' => 'This table is finalized or unavailable. Close it before starting another order.',
+                    ]);
+                }
             }
-        }
 
-
-        // Billing Process
-
-        $billId = null;
-        $discount = 0;
-        $paymentMethod = $request->paymentMethod;
-        $billTable = $request->boolean('billTable');
-
-        if ($isPickUpOrder) {
-            // Create and finalize takeaway bills immediately.
-            $billId = BillHelper::createPickUpBill($kot);
-            $bill = BillHelper::finalizeBill($billId, $paymentMethod, $buyerData, [], true, $request->input('payments', []), $request->input('loyalty_rewards', []));
-            $billId = $bill->id;
-
-            if ($this->restaurantService->hasEnabledPrintStationFor('counter')) {
-                $this->printJobService->queueBillCopies($billId, $request->input('print_copies'));
+            $order = $this->trustedOrder($request->input('order.orderItems', []));
+            if ($isPickUpOrder || $request->boolean('billTable')) {
+                $this->validateLoyaltyRewards(
+                    $request->input('loyalty_rewards', []),
+                    $order['orderItems'],
+                    $isPickUpOrder ? null : (int) $tableId
+                );
             }
-        }
+            $buyerData = $request->only(['buyer_name', 'buyer_pan', 'buyer_address', 'credit_customer_name', 'credit_customer_contact']);
 
-        if ($isTableOrder && $billTable) {
-
-            $billId = BillHelper::createTableBill($tableId);
-            $bill = BillHelper::finalizeBill($billId, $paymentMethod, $buyerData, [], false, $request->input('payments', []), $request->input('loyalty_rewards', []));
-            $billId = $bill->id;
-            TableHelper::markTableAsFinalized($tableId);
-
-            // if printBill is enabled then print bill
-            if ($this->restaurantService->hasEnabledPrintStationFor('counter')) {
-                $this->printJobService->queueBillCopies($billId, $request->input('print_copies'));
+            // if pick up order then set isTableOrder to false
+            if ($isPickUpOrder) {
+                $isTableOrder = false;
             }
-        }
 
-        if ($billId !== null) {
-            $bill->load('orders.orderDetails.menu');
-            $audit->record('bill_finalized', 'billing', [
-                'subject' => $bill,
-                'after' => $bill->only(['id', 'invoice_no', 'table_id', 'grand_total', 'payment_method', 'locked_at', 'locked_by']),
-                'metadata' => [
-                    'summary' => "Bill {$bill->invoice_no} finalized.",
-                    'payments' => $bill->payments->map->only(['payment_method', 'amount', 'reference_no'])->all(),
-                ],
+            $commonData = collect([
+                'tableId' => $tableId,
+                'specialInstructions' => $specialInstructions,
+                'isPickUpOrder' => $isPickUpOrder,
+                'isTableOrder' => $isTableOrder,
             ]);
 
-            $this->auditLoyaltyRewards($bill, $audit);
-        }
+            if ($source === "waiter") {
+                $orderData = $this->processWaiterOrder($request, $commonData, $order);
+            } else if ($source === "pos") {
+                $orderData = $this->processPOSOrder($request, $commonData, $order);
+            }
 
-        if (
-            $this->restaurantService->hasEnabledPrintStationFor('kitchen')
-            && KitchenHelper::getKOTOrders($kot, 'kitchen')->isNotEmpty()
-        ) {
-            $this->printJobService->queueKot($kot, $billId, 'kitchen', 'KOT');
-        }
+            // New Order if Kitchen Module is enabled else by default order status marked as served
+            $orderStatus = $kitchenModuleEnabled ? OrderStatus::New : OrderStatus::Served;
+            $orderData->put('status', $orderStatus);
 
-        if (
-            $this->restaurantService->hasEnabledPrintStationFor('bar')
-            && KitchenHelper::getKOTOrders($kot, 'bar')->isNotEmpty()
-        ) {
-            $this->printJobService->queueKot($kot, $billId, 'bar', 'BOT');
-        }
 
-        return response()->json(["status" => "success", "message" => "order Submitted successfully"]);
+            // insert order
+            $response = $this->orderService->createOrder($orderData);
+
+            // if order submission failed
+            if ($response['status'] === "error") {
+                return response()->json($response, 500);
+            }
+
+            $kot = $response['data'];
+
+            // Table Marking
+
+            if ($isTableOrder) {
+                TableHelper::markTableAsRunning($tableId);
+            }
+
+
+            if ($kitchenModuleEnabled) {
+                DB::afterCommit(function () use ($kot) {
+                    try {
+                        event(new OrderSubmittedToKitchen($kot));
+                    } catch (Exception $e) {
+                        Log::error('Unable to broadcast the kitchen order.', ['error' => $e->getMessage()]);
+                    }
+                });
+            }
+
+            // Billing Process
+
+            $billId = null;
+            $discount = 0;
+            $paymentMethod = $request->paymentMethod;
+            $billTable = $request->boolean('billTable');
+
+            if ($isPickUpOrder) {
+                // Create and finalize takeaway bills immediately.
+                $billId = BillHelper::createPickUpBill($kot);
+                $bill = BillHelper::finalizeBill($billId, $paymentMethod, $buyerData, [], true, $request->input('payments', []), $request->input('loyalty_rewards', []));
+                $billId = $bill->id;
+
+                if ($this->restaurantService->hasEnabledPrintStationFor('counter')) {
+                    $this->printJobService->queueBillCopies($billId, $request->input('print_copies'));
+                }
+            }
+
+            if ($isTableOrder && $billTable) {
+
+                $billId = BillHelper::createTableBill($tableId);
+                $bill = BillHelper::finalizeBill($billId, $paymentMethod, $buyerData, [], false, $request->input('payments', []), $request->input('loyalty_rewards', []));
+                $billId = $bill->id;
+                TableHelper::markTableAsFinalized($tableId);
+
+                // if printBill is enabled then print bill
+                if ($this->restaurantService->hasEnabledPrintStationFor('counter')) {
+                    $this->printJobService->queueBillCopies($billId, $request->input('print_copies'));
+                }
+            }
+
+            if ($billId !== null) {
+                $bill->load('orders.orderDetails.menu');
+                $audit->record('bill_finalized', 'billing', [
+                    'subject' => $bill,
+                    'after' => $bill->only(['id', 'invoice_no', 'table_id', 'grand_total', 'payment_method', 'locked_at', 'locked_by']),
+                    'metadata' => [
+                        'summary' => "Bill {$bill->invoice_no} finalized.",
+                        'payments' => $bill->payments->map->only(['payment_method', 'amount', 'reference_no'])->all(),
+                    ],
+                ]);
+
+                $this->auditLoyaltyRewards($bill, $audit);
+            }
+
+            if (
+                $this->restaurantService->hasEnabledPrintStationFor('kitchen')
+                && KitchenHelper::getKOTOrders($kot, 'kitchen')->isNotEmpty()
+            ) {
+                $this->printJobService->queueKot($kot, $billId, 'kitchen', 'KOT');
+            }
+
+            if (
+                $this->restaurantService->hasEnabledPrintStationFor('bar')
+                && KitchenHelper::getKOTOrders($kot, 'bar')->isNotEmpty()
+            ) {
+                $this->printJobService->queueKot($kot, $billId, 'bar', 'BOT');
+            }
+
+            return response()->json(["status" => "success", "message" => "order Submitted successfully"]);
+        });
     }
 
     // Process Waiter Order

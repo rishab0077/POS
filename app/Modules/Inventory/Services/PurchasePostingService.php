@@ -13,15 +13,16 @@ class PurchasePostingService
 {
     public function post(PurchaseInvoice $invoice): PurchaseInvoice
     {
-        if ($invoice->status === 'void') {
-            throw ValidationException::withMessages(['invoice' => 'Voided purchase invoices cannot be posted.']);
-        }
-
-        if ($invoice->status === 'posted') {
-            return $invoice;
-        }
-
         return DB::transaction(function () use ($invoice) {
+            $invoice = PurchaseInvoice::lockForUpdate()->findOrFail($invoice->id);
+            if ($invoice->status === 'void') {
+                throw ValidationException::withMessages(['invoice' => 'Voided purchase invoices cannot be posted.']);
+            }
+
+            if ($invoice->status === 'posted') {
+                return $invoice;
+            }
+
             $invoice->load('items');
 
             if ($invoice->items->isEmpty()) {
@@ -86,21 +87,22 @@ class PurchasePostingService
 
     public function void(PurchaseInvoice $invoice, string $reason): PurchaseInvoice
     {
-        if ($invoice->status !== 'posted') {
-            throw ValidationException::withMessages(['invoice' => 'Only posted purchase invoices can be voided.']);
-        }
-
-        if (!auth()->user()?->canVoidPurchase()) {
-            abort(403, 'Only Admin or Owner can void posted purchase invoices.');
-        }
-
-        if ($invoice->payments()->exists()) {
-            throw ValidationException::withMessages([
-                'invoice' => 'Cannot void a purchase invoice that has recorded payments.',
-            ]);
-        }
-
         return DB::transaction(function () use ($invoice, $reason) {
+            $invoice = PurchaseInvoice::lockForUpdate()->findOrFail($invoice->id);
+            if ($invoice->status !== 'posted') {
+                throw ValidationException::withMessages(['invoice' => 'Only posted purchase invoices can be voided.']);
+            }
+
+            if (!auth()->user()?->canVoidPurchase()) {
+                abort(403, 'Only Admin or Owner can void posted purchase invoices.');
+            }
+
+            if ($invoice->payments()->exists()) {
+                throw ValidationException::withMessages([
+                    'invoice' => 'Cannot void a purchase invoice that has recorded payments.',
+                ]);
+            }
+
             $invoice->load('items');
 
             foreach ($invoice->items as $item) {

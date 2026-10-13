@@ -7,6 +7,7 @@ use App\Models\TableLocation;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 class Table extends Model
 {
@@ -54,7 +55,8 @@ class Table extends Model
     public function save(array $options = [])
     {
         $saved = parent::save($options);
-        self::refreshAndCacheTables();
+        Cache::forget('tables');
+        DB::afterCommit(fn () => Cache::forget('tables'));
         return $saved;
     }
 

@@ -14,6 +14,8 @@
 namespace App\Helpers;
 
 use App\Models\Order;
+use App\Models\InvoiceSequence;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Class KitchenHelper
@@ -33,14 +35,21 @@ class KitchenHelper
      */
     public static function generateKOT()
     {
-        $todayStart = now()->startOfDay();
-        $todayEnd = now()->endOfDay();
-
-        $nextKOTId = Order::whereDate('created_at', '>=', $todayStart)->whereDate('created_at', '<=', $todayEnd)->count() + 1;
-
         $date = now()->format('Ymd');
-
-        return "KOT-$date-$nextKOTId";
+        return DB::transaction(function () use ($date) {
+            $prefix = "KOT-$date-";
+            $lastNumber = Order::where('KOT', 'like', $prefix . '%')
+                ->selectRaw("MAX(CAST(SUBSTRING(KOT, ?) AS UNSIGNED)) AS last_number", [strlen($prefix) + 1])
+                ->value('last_number');
+            InvoiceSequence::insertOrIgnore([
+                'fiscal_year' => "kot:$date", 'next_number' => (int) $lastNumber + 1,
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+            $sequence = InvoiceSequence::where('fiscal_year', "kot:$date")->lockForUpdate()->firstOrFail();
+            $number = $sequence->next_number;
+            $sequence->increment('next_number');
+            return $prefix . $number;
+        });
     }
 
     public static function printKOT($kot)

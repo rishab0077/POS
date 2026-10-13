@@ -9,12 +9,11 @@ use App\Models\Order;
 class OrderSyncService extends Service
 {
 
-    public function hasNewOrders(int $lastOrderId, int $waiterId): bool
+    public function pendingOrders(bool $includeTakeaway)
     {
-        return Order::where('id', '>', $lastOrderId)
-            ->where('status', '!=', OrderStatus::New->value)
-            ->where('waiter_id', $waiterId)
-            ->exists();
+        return Order::whereIn('status', [OrderStatus::New->value, OrderStatus::Processing->value])
+            ->when(!$includeTakeaway, fn ($query) => $query->whereNotNull('table_id'))
+            ->orderBy('id')->get(['id', 'status']);
     }
 
     public function hasPickupOrderUpdates(int $lastOrderId, int $waiterId): bool

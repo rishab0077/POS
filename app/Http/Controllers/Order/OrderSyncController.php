@@ -27,9 +27,14 @@ class OrderSyncController extends Controller
         /** @var \App\Models\User $user */
         $user = Auth::user();
 
-        $hasNewOrders = $this->orderSyncService->hasNewOrders($lastOrderId, $user->id);
+        abort_unless($user->canViewOperations(), 403);
+        $orders = $this->orderSyncService->pendingOrders(!$user->isWaiter());
 
-        return $this->syncResponse($hasNewOrders);
+        return response()->json([
+            'status' => 'success',
+            'orders' => $orders,
+            'hasNewOrders' => $orders->contains(fn ($order) => $order->id > $lastOrderId),
+        ]);
     }
 
     public function syncPickUpOrder(Request $request)

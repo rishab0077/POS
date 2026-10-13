@@ -10,6 +10,7 @@ use App\Modules\Inventory\Requests\StoreSupplierPaymentRequest;
 use App\Modules\Inventory\Services\PurchasePostingService;
 use App\Services\AuditLogger;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Facades\DB;
 
 class SupplierPaymentController extends Controller
 {
@@ -42,25 +43,35 @@ class SupplierPaymentController extends Controller
     public function store(StoreSupplierPaymentRequest $request, PurchasePostingService $postingService, AuditLogger $audit)
     {
         $payload = array_merge($request->validated(), ['created_by' => auth()->id()]);
-        $invoice = null;
+        $payment = DB::transaction(function () use ($payload, $postingService) {
+            $invoice = null;
 
-        if (!empty($payload['purchase_invoice_id'])) {
-            $invoice = PurchaseInvoice::whereKey($payload['purchase_invoice_id'])->where('supplier_id', $payload['supplier_id'])->first();
+            if (!empty($payload['purchase_invoice_id'])) {
+                $invoice = PurchaseInvoice::whereKey($payload['purchase_invoice_id'])->where('supplier_id', $payload['supplier_id'])
+                    ->lockForUpdate()->first();
 
-            if (!$invoice) {
-                throw ValidationException::withMessages(['purchase_invoice_id' => 'Selected invoice does not belong to the supplier.']);
+                if (!$invoice) {
+                    throw ValidationException::withMessages(['purchase_invoice_id' => 'Selected invoice does not belong to the supplier.']);
+                }
+
+                if ($invoice->status !== 'posted') {
+                    throw ValidationException::withMessages(['purchase_invoice_id' => 'Payments require a posted purchase invoice.']);
+                }
+
+                $postingService->refreshPaymentStatus($invoice);
+
+                if ((float) $payload['amount'] > (float) $invoice->balance_amount) {
+                    throw ValidationException::withMessages(['amount' => 'Payment cannot exceed invoice balance.']);
+                }
             }
 
-            if ((float) $payload['amount'] > (float) $invoice->balance_amount) {
-                throw ValidationException::withMessages(['amount' => 'Payment cannot exceed invoice balance.']);
+            $payment = SupplierPayment::create($payload);
+
+            if ($invoice) {
+                $postingService->refreshPaymentStatus($invoice);
             }
-        }
-
-        $payment = SupplierPayment::create($payload);
-
-        if ($invoice) {
-            $postingService->refreshPaymentStatus($invoice);
-        }
+            return $payment;
+        });
 
         $audit->record('supplier_payment_recorded', 'inventory', [
             'subject' => $payment,

@@ -1,5 +1,5 @@
 <div class="order-item min-w-0 w-full bg-gray-800 text-gray-100 rounded-lg shadow-md flex flex-col h-full font-sans"
-    id="order{{ $order->id }}" data-order-type="{{ $order->table ? 'dine_in' : 'take_away' }}">
+    id="order{{ $order->id }}" data-order-status="{{ $order->status->value }}" data-order-type="{{ $order->table ? 'dine_in' : 'take_away' }}">
 
     <!-- Header -->
     <header class="p-4 border-b border-gray-700">

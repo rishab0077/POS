@@ -20,21 +20,33 @@ class ReportingService extends Service
         [$startDate, $endDate] = DateHelper::formatDatesForReport($startDate, $endDate);
 
 
-        $data = DB::table('order_details')
+        $legacySales = DB::table('order_details')
             ->join('menus', 'order_details.menu_id', '=', 'menus.id')
             ->join('bill_orders', 'bill_orders.order_id', '=', 'order_details.order_id')
             ->join('bills', 'bills.id', '=', 'bill_orders.bill_id')
             ->whereNull('bill_orders.deleted_at')
             ->whereNull('bills.deleted_at')
             ->whereNotNull('bills.locked_at')
+            ->whereNotExists(fn ($query) => $query->selectRaw('1')->from('fiscal_invoice_snapshots')
+                ->whereColumn('fiscal_invoice_snapshots.bill_id', 'bills.id'))
             ->whereBetween('bills.locked_at', [$startDate, $endDate])
             ->groupBy('order_details.menu_id', 'menus.name', 'order_details.unit_price', 'menus.price')
             ->selectRaw('menus.name as menu')
             ->selectRaw('COALESCE(order_details.unit_price, menus.price) as price')
             ->selectRaw('SUM(order_details.quantity) as no_of_sales')
-            ->selectRaw('SUM((order_details.quantity - order_details.loyalty_reward_quantity) * COALESCE(order_details.unit_price, menus.price)) as total_amount')
-            ->orderBy('no_of_sales', 'desc')
-            ->get();
+            ->selectRaw('SUM((order_details.quantity - order_details.loyalty_reward_quantity) * COALESCE(order_details.unit_price, menus.price)) as total_amount');
+
+        $snapshotSales = DB::table('fiscal_invoice_items as items')
+            ->join('fiscal_invoice_snapshots as invoices', 'invoices.id', '=', 'items.fiscal_invoice_snapshot_id')
+            ->join('bills', 'bills.id', '=', 'invoices.bill_id')
+            ->whereNull('bills.deleted_at')
+            ->whereBetween('bills.locked_at', [$startDate, $endDate])
+            ->groupBy('items.item_name', 'items.unit_price')
+            ->selectRaw('items.item_name as menu, items.unit_price as price, SUM(items.quantity) as no_of_sales, SUM(items.line_total) as total_amount');
+
+        $data = DB::query()->fromSub($legacySales->unionAll($snapshotSales), 'sales')
+            ->select('menu', 'price')->selectRaw('SUM(no_of_sales) as no_of_sales, SUM(total_amount) as total_amount')
+            ->groupBy('menu', 'price')->orderByDesc('no_of_sales')->get();
 
         $returned = DB::table('fiscal_credit_note_items')
             ->join('fiscal_credit_notes', 'fiscal_credit_notes.id', '=', 'fiscal_credit_note_items.fiscal_credit_note_id')
@@ -70,37 +82,34 @@ class ReportingService extends Service
     {
         [$startDate, $endDate] = DateHelper::formatDatesForReport($startDate, $endDate);
 
-        $catergories = Category::all();
-
-        $data = [];
-
-        foreach ($catergories as $category) {
-            $categoryData = DB::table('order_details')
+        $legacySales = DB::table('order_details')
                 ->join('menus', 'order_details.menu_id', '=', 'menus.id')
                 ->join('category_menu', 'menus.id', '=', 'category_menu.menu_id')
+                ->join('categories', 'categories.id', '=', 'category_menu.category_id')
                 ->join('bill_orders', 'bill_orders.order_id', '=', 'order_details.order_id')
                 ->join('bills', 'bills.id', '=', 'bill_orders.bill_id')
-                ->where('category_menu.category_id', $category->id)
                 ->whereNull('bill_orders.deleted_at')
                 ->whereNull('bills.deleted_at')
                 ->whereNotNull('bills.locked_at')
+                ->whereNotExists(fn ($query) => $query->selectRaw('1')->from('fiscal_invoice_snapshots')
+                    ->whereColumn('fiscal_invoice_snapshots.bill_id', 'bills.id'))
                 ->whereBetween('bills.locked_at', [$startDate, $endDate])
-                ->groupBy('order_details.menu_id', 'order_details.unit_price', 'menus.price')
+                ->groupBy('categories.name')
+                ->selectRaw('categories.name as category')
                 ->selectRaw('SUM(order_details.quantity) as no_of_sales')
-                ->selectRaw('SUM((order_details.quantity - order_details.loyalty_reward_quantity) * COALESCE(order_details.unit_price, menus.price)) as total_amount')
-                ->orderBy('no_of_sales', 'desc')
-                ->get();
+                ->selectRaw('SUM((order_details.quantity - order_details.loyalty_reward_quantity) * COALESCE(order_details.unit_price, menus.price)) as total_amount');
 
+        $snapshotSales = DB::table('fiscal_invoice_items as items')
+            ->join('fiscal_invoice_snapshots as invoices', 'invoices.id', '=', 'items.fiscal_invoice_snapshot_id')
+            ->join('bills', 'bills.id', '=', 'invoices.bill_id')
+            ->whereNull('bills.deleted_at')
+            ->whereBetween('bills.locked_at', [$startDate, $endDate])
+            ->groupBy('items.category_name')
+            ->selectRaw("COALESCE(items.category_name, 'Uncategorized Sales') as category, SUM(items.quantity) as no_of_sales, SUM(items.line_total) as total_amount");
 
-            // add the category name
-            $data[$category->id]['category'] = $category->name;
-
-            // add the total number of sales for the category
-            $data[$category->id]['no_of_sales'] = $categoryData->sum('no_of_sales');
-
-            // add the total sales for the category
-            $data[$category->id]['total_amount'] = $categoryData->sum('total_amount');
-        }
+        $data = DB::query()->fromSub($legacySales->unionAll($snapshotSales), 'sales')
+            ->select('category')->selectRaw('SUM(no_of_sales) as no_of_sales, SUM(total_amount) as total_amount')
+            ->groupBy('category')->get()->map(fn ($row) => (array) $row)->all();
 
         $returned = DB::table('fiscal_credit_note_items')
             ->join('fiscal_credit_notes', 'fiscal_credit_notes.id', '=', 'fiscal_credit_note_items.fiscal_credit_note_id')

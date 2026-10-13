@@ -87,8 +87,8 @@ class SplitPaymentTest extends TestCase
                 ])
                 ->assertUnprocessable();
 
-            $bill = Bill::firstOrFail();
-            $this->assertNull($bill->fresh()->locked_at);
+            $this->assertDatabaseCount('bills', 0);
+            $this->assertDatabaseCount('orders', 1);
             $this->assertDatabaseCount('bill_payments', 0);
             $this->assertDatabaseCount('fiscal_invoice_snapshots', 0);
         }

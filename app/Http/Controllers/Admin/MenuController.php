@@ -156,6 +156,9 @@ class MenuController extends Controller
      */
     public function destroy(Menu $menu)
     {
+        if (\App\Models\OrderDetail::where('menu_id', $menu->id)->exists()) {
+            return to_route('admin.menus.index')->with('warning', 'Menu items used in orders cannot be deleted.');
+        }
         if ($menu->image) {
             Storage::delete($menu->image);
         }

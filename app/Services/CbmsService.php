@@ -65,9 +65,9 @@ class CbmsService
             $quantities,
             $referenceNo
         ) {
+            $bill = \App\Models\Bill::lockForUpdate()->findOrFail($snapshot->bill_id);
             $snapshot = FiscalInvoiceSnapshot::with(['items', 'creditNotes.items', 'bill'])
                 ->findOrFail($snapshot->id);
-            $bill = $snapshot->bill()->lockForUpdate()->firstOrFail();
             $returnedItems = $snapshot->creditNotes->flatMap->items;
             $items = [];
 

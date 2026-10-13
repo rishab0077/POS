@@ -34,7 +34,7 @@
                         {{ ucfirst($location) }} Tables</h2>
                     <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-5">
                         @foreach ($tables as $table)
-                            <div id="{{ $table->id }}" onclick="selectTable({{ $table->id }}, '{{ $table->status->value }}')"
+                            <div id="{{ $table->id }}" onclick="selectTable({{ $table->id }})"
                                 class="table-item relative flex flex-col rounded-xl shadow-lg p-3 text-white cursor-pointer transition-transform transform hover:-translate-y-1"
                                 data-table-status="{{ $table->status->value }}"
                                 data-table-name="{{ $table->name }}"
@@ -480,7 +480,8 @@
             $("#paymentModal").hide();
         }
 
-        function selectTable(tableId, status = "available") {
+        function selectTable(tableId) {
+            const status = tableId === "takeaway" ? "available" : $(`#${tableId}`).attr("data-table-status");
             if (!["available", "running", "runningKOT"].includes(status)) {
                 return;
             }

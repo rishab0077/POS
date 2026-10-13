@@ -1,8 +1,8 @@
 # Restaurant POS — Project Overview and Split-Payment Plan
 
-Last reviewed: 2026-09-14
+Last reviewed: 2026-10-13
 Branch: `local-lan-deployment`
-Revision reviewed: existing-order item visibility implementation
+Revision reviewed: phased LAN reliability repairs in the working tree
 
 ## Executive summary
 
@@ -26,7 +26,7 @@ Project-state documentation is updated as part of the same agent task that compl
 - Runtime: Docker Compose with PHP-FPM, Nginx, MySQL, Soketi, queue worker, and scheduler services.
 - Deployment: one installation per restaurant, available on a trusted local network through a reserved server IP.
 - Current development branch: `local-lan-deployment`.
-- Latest recorded automated verification: 140 tests passed with 802 assertions.
+- Latest recorded automated verification: 156 tests passed with 875 assertions, plus two JavaScript workflow regressions.
 
 ## Implemented features
 
@@ -124,6 +124,8 @@ Live status:
 
 ## Current readiness
 
+The 2026-10-13 repair release is implemented and verified in the repository. It has not been deployed to Amber or the port 8097 preview. The earlier deployment checks below describe those earlier releases.
+
 | Area | State |
 |---|---|
 | Core ordering and table workflow | Ready for local operation |
@@ -138,6 +140,7 @@ Live status:
 | Split payment | Implemented and regression-tested; final phone smoke test recommended after redeployment |
 | Phone POS and Bills layout | Responsive overflow fixes implemented and regression-tested |
 | Physical stamp-card loyalty | Unpaid-preview and final-payment flows implemented, regression-tested, and running in the isolated preview; Amber deployment plus phone/thermal smoke test pending |
+| LAN reliability repair release | All ten audit fixes implemented and tested; live rollout and staff-device/printer acceptance pending |
 
 The isolated Compose project `restaurant-pos-split-preview` uses port 8097 and separate seeded volumes. Production images containing the newer unpaid-preview flow were built and all six services were recreated on 2026-09-07. No migrations were pending, MySQL reported healthy, and `/health` returned `{"status":"ok"}`. The older local database volume was not migrated because its stored credentials no longer match the current deployment environment; it remains untouched pending credential recovery or an explicitly authorized recovery procedure.
 
@@ -145,6 +148,7 @@ The port 8097 preview contains the split-payment, mobile/currency, unpaid-previe
 
 ## Known limitations
 
+- The repair release prevents new duplicate KOT allocation and protects existing order lines, but does not rewrite old duplicate tickets or reconstruct previously deleted history. Reports for old bills without fiscal snapshots retain a legacy fallback whose missing sale-time identity cannot be recovered.
 - Split tender currently supports exactly two direct payment methods and does not support mixing credit with a direct collection.
 - Fonepay, card, eSewa, Khalti, and bank-transfer selections are accounting records; the POS does not initiate or verify payment-gateway transactions.
 - Payment refunds are internal records and do not call bank, wallet, card, or cash-management APIs.
@@ -154,6 +158,27 @@ The port 8097 preview contains the split-payment, mobile/currency, unpaid-previe
 - Live CBMS approval and acceptance remain external work.
 - The fiscal representation of a promotional item at NPR 0.00 must be confirmed during controlled CBMS acceptance with the restaurant's tax adviser/IRD before automatic delivery is enabled.
 - Loyalty is intentionally physical-card only: no customer accounts, digital stamps, card serial tracking, expiry, tiers, or electronic duplicate-card prevention.
+
+## 2026-10-13 LAN reliability repairs
+
+Completed phases:
+
+1. **Workflow:** table clicks follow the current status; cancelling the last unpaid ticket releases the table; invoiced tickets require returns; checkout failures roll back orders and bills; settlement closes orders/bills atomically; KOT polling detects other operators and status changes without empty-screen or waiter-view reload loops.
+2. **Historical integrity:** daily KOT numbers are reserved under a database lock; referenced menus cannot be deleted; item/category reports retain immutable sale-time identity and prices, with the existing date filters and legacy fallback.
+3. **Financial integrity:** purchase posting/voiding use current locked invoice state; invoice-linked supplier payments require posted invoices and cannot overpay; return issuance reads accumulated quantities only after locking the bill. Real independent-process races verify these protections.
+4. **Verification:** the full suite passed with 156 tests and 875 assertions, two JavaScript regressions passed, and PHP syntax, production Vite build, Docker test-image build, Blade compilation, and diff checks passed. An additional verified migration rollback defect was fixed by dropping `bill_orders` before `bills`; complete rollback succeeded on the disposable test database.
+
+No application fix is blocked. Deployment remains pending: back up the actual installation, rebuild and deploy the application/frontend/worker images, then check table finalization/closure/reuse, cancellation, KOT changes across two staff devices, and physical receipts. These repairs add no forward migration; previously pending release migrations must still be checked. CBMS activation remains separate and was not changed or tested against live IRD.
+
+Regression commands use the isolated test Compose project, never the restaurant database:
+
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.test.yml build app
+docker compose -f docker-compose.yml -f docker-compose.test.yml run --rm app php artisan test
+docker compose -f docker-compose.yml -f docker-compose.test.yml run --rm --no-deps app node --test tests/js/lan-workflow.test.cjs
+```
+
+Database tests share one isolated schema and must run sequentially; the financial workers intentionally compete within a single test. The original findings, corrections, verification, and historical-data limits are recorded in `PROJECT_STATE.md`.
 
 # Implemented Feature: Physical Stamp-card Loyalty
 
