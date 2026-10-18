@@ -21,11 +21,25 @@ This file is the shared handoff for the project. Every agent or chat that implem
 - Production images exclude Node.js and npm and include the MariaDB backup client and MySQL 8 authentication connector required by `backup:database`.
 - `npm ci` and the production frontend build complete with zero reported npm vulnerabilities.
 - Production uses the database queue; the test profile uses the synchronous queue.
-- Latest local PHP suite (2026-10-18): **176 tests, 1,024 assertions**, with eight JavaScript regressions passing. The final screen cleanup also passed 23 focused tests / 167 assertions, PHP syntax, Blade compilation, and the production frontend build. Sanjay's restaurant server still runs whole-ticket cancellation release `82910ee`; item quantity controls are verified locally and await rollout. Server HTTP health and print-agent heartbeats pass, while staff workflow and physical-print acceptance remain pending.
+- Latest local PHP suite (2026-10-18): **176 tests, 1,024 assertions**, with eight JavaScript regressions passing. The final screen cleanup also passed 23 focused tests / 167 assertions, PHP syntax, Blade compilation, and the production frontend build. Sanjay's restaurant server now runs per-item quantity release `43a8f36`. Server HTTP health and print-agent heartbeats pass; staff workflow and physical-print acceptance remain pending.
 
 ## Completed work
 
-### 2026-10-18 — Per-item quantity controls (verified locally; restaurant rollout pending)
+### 2026-10-18 — Per-item quantity release deployed to Sanjay's LAN server
+
+Published and deployed `43a8f360bed57fc9c2f0c659075d2dd5f496e403`. Operator screenshots confirm the checkout fast-forwarded from `82910ee`, with hashes unchanged for `.env`, `.dockerignore`, the customized print agent, local printer configuration, and `.git/info/exclude`. Only the two expected tracked server customizations remain. No credential contents were printed or added to source/images; required Docker exclusions were checked before building.
+
+Fresh restricted configuration backups, including the previous release override, are in `C:\RestaurantPOS-local-backup-20261018-204333`. The then-running `82910ee` images were tagged `restaurant-pos-rollback-app:20261018-204333` and `restaurant-pos-rollback-web:20261018-204333` and saved in a 94,590,976-byte archive. The saved `rollback.ps1` passed PowerShell syntax validation and checks for `order_item_cancelled` audit events before allowing automatic rollback to the older code. Image presence was checked; rollback execution was not tested.
+
+Built `restaurant-pos-release-app:43a8f36` and `restaurant-pos-release-web:43a8f36` without replacing running services. During maintenance, Nginx/queue/scheduler were stopped and `database-cutover.sql.gz` (26,126 bytes) passed backup validation, gzip integrity, and copied-file SHA-256 checks. Restore validation was explicitly skipped. Caches were cleared with the new image, migrations checked (displayed entries Ran; no new migration), and app/Nginx/queue/scheduler recreated with the release override. MySQL, Soketi, database/storage volumes, and the separate preview were preserved. CBMS guard commands preceded worker startup; no live IRD submission was invoked.
+
+Operator screenshots confirm maintenance removed, all six services running, all four affected services on `43a8f36`, MySQL/Nginx healthy, successful configuration/route/Blade caches, `/health` returning `status: ok`, and repeated HTTP 200 printer heartbeats after rollout. This establishes application health and agent communication, not successful physical printing or item cancellation on staff devices.
+
+Current Compose override: `C:\RestaurantPOS-local-backup-20261018-204333\release-compose.yml`; include it with `-p restaurant-pos -f docker-compose.yml` for future service operations. Previous override/rollback files and the older backup directory remain preserved. Do not use the base Compose file alone for recreation, restore the database over later sales, or bypass the older-release compatibility guard after item cancellation has been used.
+
+Still pending: waiter/POS/KOT plus/minus behavior on staff devices, decline/confirm cancellation, required reason and audit, 2-to-1 quantity and unpaid-preview changes, cross-device KOT polling, final-unit table release, and physical KOT output. Prepared-food wastage stays manual; printed/in-flight tickets require kitchen notification; final invoices require returns. Backup restore and rollback execution remain unverified.
+
+### 2026-10-18 — Per-item quantity controls (local verification; subsequently deployed)
 
 Added shared minus/plus controls to existing items on waiter/POS ordering screens and KOT/table-order cards, including drinks. Minus on sent food opens an accessible confirmation dialog with a required reason and optional notes, then cancels exactly one unit. On the waiter menu, minus removes a new cart unit first; if none remain, it opens cancellation for an existing ticket of that menu item. Existing quantities are labelled as already on KOT and individual rows show their ticket reference. Plus on ordering screens adds to the normal unsent cart; Submit KOT creates a fresh ticket. Plus on a KOT card confirms and submits one new unit through the existing validated ordering endpoint, only for staff authorized to place orders. Kitchen-only staff retain cancellation access without gaining ordering permission.
 
@@ -35,7 +49,7 @@ KOT polling now compares item counts as well as IDs/statuses; kitchen polling re
 
 Verification: complete isolated PHP suite 176 passed / 1,024 assertions; after final screen cleanup, 23 focused ordering/cancellation tests passed / 167 assertions. Eight Node regressions cover confirmation/decline/error flows, new-ticket additions, quantity-only polling, waiter menu behavior, and waiter/POS draft preservation. Production Vite builds, syntax checks for all eight changed PHP application files, rendered-screen tests, Blade compilation, and diff checks passed. Docker was started on the development PC; only `restaurant-pos-automated` was used for database verification. No restaurant/preview deployment or live IRD request was performed.
 
-Readiness: implemented and verified locally; restaurant rollout and phone/physical-printer acceptance on Sanjay's PC remain pending. The running restaurant release remains `82910ee`. Final invoices still require returns. Older releases do not filter the retained zero-quantity rows; review rollback compatibility after item cancellation has been used, and do not restore an old database over subsequent sales.
+Readiness: implemented, verified locally, and subsequently deployed as `43a8f36`; phone/workflow/physical-printer acceptance on Sanjay's PC remains pending. Final invoices still require returns. Older releases do not filter the retained zero-quantity rows; review rollback compatibility after item cancellation has been used, and do not restore an old database over subsequent sales.
 
 ### 2026-10-18 — Cancellation release deployed to Sanjay's LAN server
 
