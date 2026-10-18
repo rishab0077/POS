@@ -13,7 +13,8 @@ class OrderSyncService extends Service
     {
         return Order::whereIn('status', [OrderStatus::New->value, OrderStatus::Processing->value])
             ->when(!$includeTakeaway, fn ($query) => $query->whereNotNull('table_id'))
-            ->orderBy('id')->get(['id', 'status']);
+            ->select(['id', 'status'])->withSum('orderDetails as item_count', 'quantity')
+            ->orderBy('id')->get();
     }
 
     public function hasPickupOrderUpdates(int $lastOrderId, int $waiterId): bool

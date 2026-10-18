@@ -4,6 +4,7 @@
     <div class="bg-gray-100 min-h-screen font-sans text-gray-700 " x-data="waiterOrderScreen({
         table: {{ Js::from($table) }},
         existingTableTotal: {{ Js::from($existingTableTotal) }},
+        sentItems: {{ Js::from($existingOrderDetails->map->only(['menu_id', 'quantity'])->values()) }},
         menus: {{ Js::from($categoriesWithMenus) }},
         notes: {{ Js::from($predefinedNotes) }},
         submitUrl: '{{ route('order.submit') }}',
@@ -33,14 +34,15 @@
         </header>
 
         <main class="p-4 pb-48 sm:pb-32">
-            @if ($existingOrderItems->isNotEmpty())
+            @if ($existingOrderDetails->isNotEmpty())
                 <section class="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3 shadow-sm">
                     <h2 class="mb-2 font-semibold text-blue-950">Existing items</h2>
                     <div class="divide-y divide-blue-100">
-                        @foreach ($existingOrderItems as $item)
-                            <div class="flex justify-between gap-3 py-2 text-sm">
-                                <span>{{ $item['name'] }} × {{ $item['quantity'] }}</span>
-                                <strong>NPR {{ number_format($item['unit_price'] * $item['quantity'], 2) }}</strong>
+                        @foreach ($existingOrderDetails as $orderDetail)
+                            <div class="flex flex-wrap items-center justify-between gap-3 py-2 text-sm">
+                                <span class="min-w-0 break-words">{{ $orderDetail->menu?->name }} <small class="block">{{ $orderDetail->order->KOT }}</small></span>
+                                @include('components.order.item-quantity-control', ['cart' => 'waiter'])
+                                <strong>NPR {{ number_format($orderDetail->unit_price * ($orderDetail->quantity - $orderDetail->loyalty_reward_quantity), 2) }}</strong>
                             </div>
                         @endforeach
                     </div>
@@ -59,7 +61,10 @@
                             <div class="p-2 space-y-2 border-t border-gray-200">
                                 <template x-for="menu in category.menus" :key="menu.id">
                                     <div class="flex items-center justify-between p-2 rounded-md hover:bg-gray-50">
-                                        <span class="text-gray-800" x-text="menu.name"></span>
+                                        <span class="text-gray-800"><span x-text="menu.name"></span>
+                                            <small class="block text-blue-700" x-show="getSentQuantity(menu.id) > 0"
+                                                x-text="getSentQuantity(menu.id) + ' already on KOT'"></small>
+                                        </span>
                                         <div class="flex items-center space-x-3">
                                             <button @click="updateQuantity(menu.id, -1)"
                                                 class="w-8 h-8 bg-red-500 text-white rounded-full font-bold text-lg leading-tight shadow-sm hover:bg-red-600">-</button>
@@ -163,6 +168,7 @@
             return {
                 table: data.table,
                 existingTableTotal: Number(data.existingTableTotal) || 0,
+                sentItems: data.sentItems,
                 categories: data.menus,
                 predefinedNotes: data.notes,
                 submitUrl: data.submitUrl,
@@ -177,6 +183,25 @@
 
                 // Initialize the component
                 init() {
+                    const draftKey = 'waiter-order-draft:' + this.table.id;
+                    const draft = sessionStorage.getItem(draftKey);
+                    if (draft) {
+                        try {
+                            const saved = JSON.parse(draft);
+                            this.cart = saved.cart;
+                            this.finalNotes = saved.finalNotes;
+                            this.selectedNotes = saved.selectedNotes;
+                            this.customNotes = saved.customNotes;
+                        } catch {
+                            this.cart = [];
+                        } finally {
+                            sessionStorage.removeItem(draftKey);
+                        }
+                    }
+                    window.addEventListener('order-cancellation-recorded', () => {
+                        sessionStorage.setItem(draftKey, JSON.stringify({ cart: this.cart, finalNotes: this.finalNotes,
+                            selectedNotes: this.selectedNotes, customNotes: this.customNotes }));
+                    });
                     if (this.categories.length > 0) {
                         this.activeCategory = this.categories[0].id;
                     }
@@ -200,6 +225,11 @@
                     return item ? item.quantity : 0;
                 },
 
+                getSentQuantity(menuId) {
+                    return this.sentItems.filter(item => Number(item.menu_id) === Number(menuId))
+                        .reduce((sum, item) => sum + Number(item.quantity), 0);
+                },
+
                 updateQuantity(menuId, change, name = null, price = null) {
                     let item = this.cart.find(i => i.id === menuId);
                     if (item) {
@@ -214,6 +244,8 @@
                             price: price,
                             quantity: 1
                         });
+                    } else {
+                        document.querySelector(`[data-sent-item][data-menu-id="${Number(menuId)}"] [data-cancel-one]`)?.click();
                     }
                 },
 

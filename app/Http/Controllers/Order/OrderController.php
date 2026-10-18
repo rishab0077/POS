@@ -346,6 +346,8 @@ class OrderController extends Controller
         abort_unless(auth()->user()?->canViewOperations(), 403);
         $data = $request->validate([
             'orderId' => ['required', 'integer', 'exists:orders,id'],
+            'orderDetailId' => ['nullable', 'integer', 'exists:order_details,id'],
+            'expectedQuantity' => ['required_with:orderDetailId', 'integer', 'min:1'],
             'reason' => ['required', 'string', Rule::in(config('pos.cancellation_reasons'))],
             'notes' => ['nullable', 'string', 'max:500'],
         ]);
@@ -370,13 +372,43 @@ class OrderController extends Controller
             $bills = $bills->whereNull('deleted_at');
 
             $before = $order->only(['status', 'table_id']);
-            $order->update([
-                'status' => OrderStatus::Cancelled,
-                'cancelled_at' => now(), 'cancelled_by' => auth()->id(),
-                'cancellation_reason' => $data['reason'], 'cancellation_notes' => $data['notes'] ?? null,
-            ]);
+            if (!empty($data['orderDetailId'])) {
+                $detail = $order->orderDetails()->lockForUpdate()->findOrFail($data['orderDetailId']);
+                if ((int) $detail->quantity !== (int) $data['expectedQuantity']) {
+                    throw ValidationException::withMessages(['orderDetailId' => 'Quantity changed. Refresh before cancelling another item.']);
+                }
+                $itemBefore = $detail->only(['quantity', 'loyalty_reward_quantity']);
+                $quantity = (int) $detail->quantity - 1;
+                $rewardQuantity = min((int) $detail->loyalty_reward_quantity, $quantity);
+                $detail->update([
+                    'quantity' => $quantity, 'loyalty_reward_quantity' => $rewardQuantity,
+                    'loyalty_original_unit_price' => $rewardQuantity ? $detail->loyalty_original_unit_price : null,
+                    'loyalty_redeemed_by' => $rewardQuantity ? $detail->loyalty_redeemed_by : null,
+                    'loyalty_redeemed_at' => $rewardQuantity ? $detail->loyalty_redeemed_at : null,
+                ]);
+                $order->update(['total' => $order->orderDetails()->get()->sum(fn ($item) =>
+                    (int) round((float) ($item->unit_price ?? $item->menu?->price ?? 0) * 100)
+                    * ((int) $item->quantity - (int) $item->loyalty_reward_quantity)) / 100]);
+                $audit->record('order_item_cancelled', 'ordering', [
+                    'subject' => $detail, 'before' => $itemBefore,
+                    'after' => $detail->only(['quantity', 'loyalty_reward_quantity']),
+                    'metadata' => ['summary' => "One {$detail->menu?->name} cancelled from {$order->KOT}.",
+                        'order_id' => $order->id, 'menu_id' => $detail->menu_id,
+                        'reason' => $data['reason'], 'notes' => $data['notes'] ?? null],
+                ]);
+            }
+            $cancelWholeOrder = empty($data['orderDetailId']) || !$order->orderDetails()->exists();
+            if ($cancelWholeOrder) {
+                $order->update([
+                    'status' => OrderStatus::Cancelled,
+                    'cancelled_at' => now(), 'cancelled_by' => auth()->id(),
+                    'cancellation_reason' => $data['reason'], 'cancellation_notes' => $data['notes'] ?? null,
+                ]);
+            }
             foreach ($bills as $bill) {
-                BillOrder::where('bill_id', $bill->id)->where('order_id', $order->id)->delete();
+                if ($cancelWholeOrder) {
+                    BillOrder::where('bill_id', $bill->id)->where('order_id', $order->id)->delete();
+                }
                 $remaining = $bill->orders()->get();
                 if ($remaining->isEmpty()) {
                     $bill->delete();
@@ -386,15 +418,21 @@ class OrderController extends Controller
                         $bill->only(['buyer_name', 'buyer_pan', 'buyer_address']));
                 }
             }
-            $jobs = PrintJob::whereIn('status', [PrintJob::STATUS_PENDING, PrintJob::STATUS_FAILED])
+            $jobs = PrintJob::whereIn('status', [PrintJob::STATUS_PENDING, PrintJob::STATUS_FAILED, PrintJob::STATUS_PROCESSING])
                 ->where(function ($query) use ($order, $bills) {
                     $query->where(fn ($q) => $q->where('source_type', Order::class)->where('source_id', $order->id))
                         ->orWhere(fn ($q) => $q->where('source_type', Bill::class)
                             ->whereIn('source_id', $bills->pluck('id'))->where('type', 'summary_bill'));
                 })->lockForUpdate()->get();
             foreach ($jobs as $job) {
+                if (!$cancelWholeOrder && $job->source_type === Order::class
+                    && KitchenHelper::getKOTOrders($order->KOT, $job->printer_key)->isNotEmpty()) {
+                    $job->update(['payload' => app(\App\Services\PrintPayloadService::class)
+                        ->kotPayload($order->KOT, null, $job->printer_key, strtoupper($job->type))]);
+                    continue;
+                }
                 $job->update(['status' => PrintJob::STATUS_CANCELLED, 'locked_until' => null,
-                    'last_error' => 'Order cancelled; this ticket or unpaid preview is no longer valid.']);
+                    'last_error' => 'Order changed or cancelled; this ticket or unpaid preview is no longer valid.']);
             }
             if ($tableId) {
                 $hasActiveOrders = Order::where('table_id', $tableId)
@@ -405,12 +443,14 @@ class OrderController extends Controller
                     TableHelper::markTableAsFinalized($tableId);
                 }
             }
-            $audit->record('order_cancelled', 'ordering', [
-                'subject' => $order, 'before' => $before,
-                'after' => $order->only(['status', 'cancelled_at', 'cancelled_by', 'cancellation_reason', 'cancellation_notes']),
-                'metadata' => ['summary' => "Order {$order->KOT} cancelled."],
-            ]);
-            return response()->json(['status' => 'success', 'message' => 'Order cancelled. Notify the kitchen if its ticket was already printed.']);
+            if ($cancelWholeOrder) {
+                $audit->record('order_cancelled', 'ordering', [
+                    'subject' => $order, 'before' => $before,
+                    'after' => $order->only(['status', 'cancelled_at', 'cancelled_by', 'cancellation_reason', 'cancellation_notes']),
+                    'metadata' => ['summary' => "Order {$order->KOT} cancelled."],
+                ]);
+            }
+            return response()->json(['status' => 'success', 'message' => 'Cancellation recorded. Notify the kitchen if its ticket was already printed.']);
         });
     }
 

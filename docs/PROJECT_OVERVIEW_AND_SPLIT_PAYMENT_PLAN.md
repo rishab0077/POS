@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-10-18
 Branch: `local-lan-deployment`
-Revision reviewed: cancellation release `82910ee`, deployed to Sanjay's restaurant server on 2026-10-18
+Revision reviewed: locally verified per-item quantity extension; restaurant server remains on whole-ticket cancellation release `82910ee`
 
 ## Executive summary
 
@@ -26,9 +26,17 @@ Project-state documentation is updated as part of the same agent task that compl
 - Runtime: Docker Compose with PHP-FPM, Nginx, MySQL, Soketi, queue worker, and scheduler services.
 - Deployment: one installation per restaurant, available on a trusted local network through a reserved server IP.
 - Current development branch: `local-lan-deployment`.
-- Latest recorded automated verification: 168 tests passed with 960 assertions, plus three JavaScript workflow regressions.
+- Latest local automated verification: 176 PHP tests / 1,024 assertions and eight JavaScript regressions; final screen cleanup passed 23 focused tests / 167 assertions, PHP syntax, Blade compilation, and production frontend builds.
 
 ## Implemented features
+
+### Per-item cancellation and quantity controls (verified locally; rollout pending)
+
+Existing items on waiter/POS ordering screens and KOT/table-order cards now have quantity controls. Minus cancels exactly one sent unit after confirmation and a required reason, with operator/before/after history retained. The waiter menu's minus removes unsent cart units first, then opens cancellation for an existing KOT item. Plus on ordering screens stages an extra unit for Submit KOT; plus on KOT cards confirms and submits a fresh one-unit ticket through the existing ordering endpoint for authorized ordering staff. Unsent carts and notes survive successful cancellation refreshes.
+
+Unpaid previews, reward quantities, table availability, remaining kitchen quantities, and unfinished print payloads are updated inside the existing cancellation transaction. Stale quantities and final invoices are rejected; final invoices require returns. Removing the final unit cancels the ticket, while zero-quantity rows remain available in the database/audit history and are excluded from active bills and tickets. KOT polling detects quantity changes and preserves open confirmation forms. No migration is required. Printed/in-flight tickets still require kitchen notification, and prepared-food wastage stays manual.
+
+This extension is implemented and verified locally, with 176 PHP tests / 1,024 assertions, eight JavaScript tests, a final focused 23-test / 167-assertion pass, frontend builds, PHP syntax, and Blade compilation. It has not been deployed to Sanjay's restaurant or the isolated preview. Older releases do not hide retained zero-quantity rows; account for this when planning rollback after live use. See `PROJECT_STATE.md` for verification and deployment status.
 
 ### Restaurant and staff operations
 
@@ -144,6 +152,7 @@ The 2026-10-13 repair release is implemented, regression-tested, and deployed to
 | Physical stamp-card loyalty | Implemented and regression-tested; restaurant server at `82910ee` reports no pending migrations; cashier/phone/thermal acceptance remains pending |
 | LAN reliability repair release | All ten audit fixes deployed to the restaurant server; HTTP health and printer-agent communication pass; staff-device/table/physical-print acceptance pending |
 | Cancellation after KOT, including waiters | Implemented and verified locally: twelve cancellation cases and full suite 168 tests / 960 assertions pass; deployed to Sanjay's server as `82910ee`; HTTP health/agent communication pass; phone/workflow/physical-print acceptance pending |
+| Per-item minus/plus controls | Implemented and verified locally; order screens and KOT cards supported; restaurant rollout and phone/physical-print acceptance pending |
 
 The isolated Compose project `restaurant-pos-split-preview` uses port 8097 and separate seeded volumes. Production images containing the newer unpaid-preview flow were built and all six services were recreated on 2026-09-07. No migrations were pending, MySQL reported healthy, and `/health` returned `{"status":"ok"}`. The older local database volume was not migrated because its stored credentials no longer match the current deployment environment; it remains untouched pending credential recovery or an explicitly authorized recovery procedure.
 
@@ -151,6 +160,7 @@ The port 8097 preview contains the split-payment, mobile/currency, unpaid-previe
 
 ## Known limitations
 
+- Per-item cancellation and quantity controls are locally verified but not yet deployed. Sanjay's running `82910ee` release still supports whole-ticket cancellation only. Existing paper/in-flight printing cannot be recalled. Keep final-invoice returns and manual prepared-food wastage workflows.
 - The cancellation extension is deployed as `82910ee`; server health and printer communication pass, but staff workflow and physical printing remain unverified. Final invoices require returns; paper already printed or an in-flight print cannot be recalled, and prepared-food wastage requires existing manual inventory operations.
 - Six follow-up audit findings remain unfixed: stale purchase edits, stale stock forms, reservation loss during refused table deletion, stale printer acknowledgements, reservation datetime casting, and purchase-void cost valuation. Order-state guards are fixed and tested in deployed `82910ee`.
 - The repair release prevents new duplicate KOT allocation and protects existing order lines, but does not rewrite old duplicate tickets or reconstruct previously deleted history. Reports for old bills without fiscal snapshots retain a legacy fallback whose missing sale-time identity cannot be recovered.

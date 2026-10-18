@@ -80,7 +80,7 @@ function kotErrorMessage(error, fallback) {
 }
 
 function checkOrderUpdates() {
-    if (document.querySelector('details[open] [data-order-cancellation]')) return;
+    if (document.querySelector('details[open] [data-order-cancellation], dialog[open] [data-order-cancellation], [data-add-one]:disabled')) return;
     $.ajax({
         url: checkOrderUpdatesRoute,
         method: "GET",
@@ -100,11 +100,11 @@ function checkOrderUpdates() {
 function getVisibleOrders() {
     return $(".order-item")
         .map(function () {
-            return { id: Number(this.id.replace("order", "")), status: this.getAttribute("data-order-status") };
+            return { id: Number(this.id.replace("order", "")), status: this.getAttribute("data-order-status"), item_count: Number(this.getAttribute('data-order-quantity')) };
         })
         .get();
 }
 
 function orderState(orders) {
-    return JSON.stringify(orders.map(order => [Number(order.id), order.status]).sort((a, b) => a[0] - b[0]));
+    return JSON.stringify(orders.map(order => [Number(order.id), order.status, Number(order.item_count || 0)]).sort((a, b) => a[0] - b[0]));
 }

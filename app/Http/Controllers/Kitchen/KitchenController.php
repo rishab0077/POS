@@ -108,6 +108,7 @@ class KitchenController extends Controller
             'id' => $order->id,
             'kot' => $order->KOT,
             'status' => $order->status->value,
+            'item_count' => $order->orderDetails->sum('quantity'),
             'html' => view($view, compact('order'))->render(),
         ];
     }

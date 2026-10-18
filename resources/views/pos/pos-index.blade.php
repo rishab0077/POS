@@ -109,14 +109,14 @@
                         <table class="w-full">
                             @if ($existingOrderItems->isNotEmpty())
                                 <tbody id="existing-order-items-body" class="order-items-body divide-y divide-gray-200 bg-blue-50">
-                                    @foreach ($existingOrderItems as $item)
+                                    @foreach ($existingOrderDetails as $orderDetail)
                                         <tr>
                                             <td>
-                                                <span>{{ $item['name'] }}</span>
-                                                <small class="ml-2 text-blue-700">Existing</small>
+                                                <span>{{ $orderDetail->menu?->name }}</span>
+                                                <small class="block text-blue-700">{{ $orderDetail->order->KOT }}</small>
                                             </td>
-                                            <td>{{ $item['quantity'] }}</td>
-                                            <td>{{ number_format(($item['quantity'] - $item['redeemed_quantity']) * $item['unit_price'], 2) }}</td>
+                                            <td>@include('components.order.item-quantity-control', ['cart' => 'pos'])</td>
+                                            <td>{{ number_format(($orderDetail->quantity - $orderDetail->loyalty_reward_quantity) * $orderDetail->unit_price, 2) }}</td>
                                         </tr>
                                     @endforeach
                                 </tbody>
@@ -316,8 +316,29 @@
         const serviceChargeEnabled = @json((bool) config('pos.tax.service_charge_enabled', false));
         const serviceChargeRate = {{ (float) config('pos.tax.service_charge_rate', 0) }};
         let existingTableOrderTotal = {{ (float) $existingOrderTotal }};
+        const orderDraftKey = 'pos-order-draft:' + {{ Js::from($table?->id ?? 'takeaway') }};
+        const savedOrderDraft = sessionStorage.getItem(orderDraftKey);
+        if (savedOrderDraft) {
+            try {
+                const saved = JSON.parse(savedOrderDraft);
+                orderItems = saved.items;
+                selectedNotes.push(...saved.notes);
+            } catch {
+                orderItems = [];
+            } finally {
+                sessionStorage.removeItem(orderDraftKey);
+            }
+        }
+        window.addEventListener('order-cancellation-recorded', () => {
+            sessionStorage.setItem(orderDraftKey, JSON.stringify({ items: orderItems, notes: selectedNotes }));
+        });
     </script>
     <script src="{{ asset('js/pos.js') }}"></script>
+    @if ($table)
+        <script>
+            if (savedOrderDraft) renderOrderTable();
+        </script>
+    @endif
     <style>
         /* Custom styles for dynamically generated elements from pos.js */
         .order-items-body tr {

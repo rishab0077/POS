@@ -53,6 +53,7 @@ class Order extends Model
     }
     public function orderDetails()
     {
-        return $this->hasMany(OrderDetail::class);
+        // Keep zero-quantity rows for cancellation history, outside active tickets and billing.
+        return $this->hasMany(OrderDetail::class)->where('quantity', '>', 0);
     }
 }

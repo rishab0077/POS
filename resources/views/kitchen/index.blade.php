@@ -100,8 +100,12 @@
             });
 
             (orders || []).forEach(function(order) {
-                if (!document.getElementById('order' + order.id)) {
+                const existing = document.getElementById('order' + order.id);
+                if (!existing) {
                     container.append(order.html);
+                } else if (Number(existing.dataset.orderQuantity) !== Number(order.item_count)
+                    && !existing.querySelector('dialog[open], details[open]')) {
+                    $(existing).replaceWith(order.html);
                 }
             });
         }
@@ -220,7 +224,7 @@
                 const isDineIn = orderElement.data('order-type') === 'dine_in';
 
                 // Find each item row within the order card
-                orderElement.find('.order-details-list > div').each(function() {
+                orderElement.find('.order-name-quantity').each(function() {
                     const itemRow = $(this);
                     const quantitySpan = itemRow.find('span:first-child');
                     const nameSpan = itemRow.find('span:last-child');

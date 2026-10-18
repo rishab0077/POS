@@ -148,7 +148,8 @@ class PrintJob extends Model
             ]);
 
             $job->update([
-                'status' => $job->source_type === Order::class && $job->source?->status === \App\Enums\OrderStatus::Cancelled
+                'status' => $job->status === self::STATUS_CANCELLED
+                    || ($job->source_type === Order::class && $job->source?->status === \App\Enums\OrderStatus::Cancelled)
                     ? self::STATUS_CANCELLED : self::STATUS_FAILED,
                 'print_station_id' => $station->id,
                 'failed_at' => $completedAt,

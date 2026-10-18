@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Enums\OrderStatus;
 use App\Enums\TableStatus;
 use App\Helpers\BillHelper;
 use App\Helpers\TableHelper;
@@ -12,7 +11,6 @@ use Illuminate\Http\Request;
 use App\Models\Bill;
 use App\Models\BillOrder;
 use App\Models\Order;
-use App\Models\OrderDetail;
 use App\Models\TableLocation;
 use Illuminate\Support\Facades\Session;
 use App\Http\Service\TableService;
@@ -75,18 +73,10 @@ class WaiterController extends Controller
                 ->with('warning', 'This table is finalized or unavailable and cannot accept more orders.');
         }
 
-        $existingTableTotal = (float) $this->tableService->getOrderSumForTable($table->id);
-        $existingOrderItems = OrderDetail::with('menu')
-            ->whereHas('order', fn ($query) => $query
-                ->where('table_id', $table->id)
-                ->whereNotIn('status', [OrderStatus::Closed->value, OrderStatus::Cancelled->value]))
-            ->get()
-            ->groupBy(fn (OrderDetail $detail) => $detail->menu_id . ':' . $detail->unit_price)
-            ->map(fn ($items) => [
-                'name' => $items->first()->menu?->name ?? 'Deleted menu item',
-                'quantity' => (int) $items->sum('quantity'),
-                'unit_price' => (float) $items->first()->unit_price,
-            ])->values();
+        $existingOrders = BillHelper::processTableBill($table->id)
+            ->load(['orderDetails.menu', 'orderDetails.order']);
+        $existingTableTotal = (float) $existingOrders->sum('total');
+        $existingOrderDetails = $existingOrders->flatMap->orderDetails;
 
         return view('waiter.order-screen', compact(
             'categoriesWithMenus',
@@ -95,7 +85,7 @@ class WaiterController extends Controller
             'table',
             'orderType',
             'existingTableTotal',
-            'existingOrderItems'
+            'existingOrderDetails'
         ));
     }
 }

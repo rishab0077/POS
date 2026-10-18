@@ -316,6 +316,7 @@ class BillHelper
             ->mapWithKeys(fn (array $reward) => [(int) $reward['menu_id'] => (int) $reward['quantity']]);
         $details = OrderDetail::with('menu.category')
             ->whereIn('order_id', $bill->orders->pluck('id'))
+            ->where('quantity', '>', 0)
             ->orderBy('id')
             ->lockForUpdate()
             ->get();

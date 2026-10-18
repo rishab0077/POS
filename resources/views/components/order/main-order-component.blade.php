@@ -1,5 +1,5 @@
 <div class="order-item min-w-0 w-full bg-gray-800 text-gray-100 rounded-lg shadow-md flex flex-col h-full font-sans"
-    id="order{{ $order->id }}" data-order-status="{{ $order->status->value }}" data-order-type="{{ $order->table ? 'dine_in' : 'take_away' }}">
+    id="order{{ $order->id }}" data-order-status="{{ $order->status->value }}" data-order-quantity="{{ $order->orderDetails->sum('quantity') }}" data-order-type="{{ $order->table ? 'dine_in' : 'take_away' }}">
 
     <!-- Header -->
     <header class="p-4 border-b border-gray-700">
@@ -32,11 +32,12 @@
 
         <div class="space-y-2 order-details-list">
             @foreach ($order->orderDetails as $orderDetail)
-                @if ($orderDetail->menu->category->first()->name != 'Drinks')
-                    <div class="flex items-center text-lg order-name-quantity">
-                        <span class="font-bold text-yellow-400 w-8">{{ $orderDetail->quantity }} x</span>
-                        <span class="min-w-0 break-words text-gray-100">{{ $orderDetail->menu->name }}</span>
-                    </div>
+                <div class="flex items-center text-lg order-name-quantity">
+                    <span class="font-bold text-yellow-400 w-8">{{ $orderDetail->quantity }} x</span>
+                    <span class="min-w-0 break-words text-gray-100">{{ $orderDetail->menu?->name }}</span>
+                </div>
+                @if (auth()->user()?->canViewOperations() && !in_array($order->status, [App\Enums\OrderStatus::Closed, App\Enums\OrderStatus::Cancelled], true))
+                    @include('components.order.item-quantity-control')
                 @endif
             @endforeach
         </div>

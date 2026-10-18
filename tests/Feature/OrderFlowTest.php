@@ -128,7 +128,7 @@ class OrderFlowTest extends TestCase
             ->get(route('waiter.order', $table->id))
             ->assertOk()
             ->assertViewHas('existingTableTotal', 125.50)
-            ->assertViewHas('existingOrderItems', fn ($items) => $items->count() === 1)
+            ->assertViewHas('existingOrderDetails', fn ($items) => $items->count() === 1)
             ->assertSee('Current table')
             ->assertSee('Existing items')
             ->assertSee($menu->name)

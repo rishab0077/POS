@@ -54,6 +54,7 @@ class PosController extends Controller
         $table = null;
         $existingOrderTotal = 0;
         $existingOrderItems = collect();
+        $existingOrderDetails = collect();
         $existingLoyaltyCandidates = collect();
 
         if ($orderType === OrderType::DineIn) {
@@ -73,6 +74,8 @@ class PosController extends Controller
             $billingGroup = $this->billingGroupsForTables([$table->id])[$table->id] ?? [];
             $existingOrderTotal = (float) ($billingGroup['total'] ?? 0);
             $existingOrderItems = collect($billingGroup['items'] ?? []);
+            $existingOrderDetails = BillHelper::processTableBill($table->id)
+                ->load(['orderDetails.menu', 'orderDetails.order'])->flatMap->orderDetails;
             $existingLoyaltyCandidates = collect($billingGroup['loyalty_items'] ?? []);
         }
 
@@ -84,6 +87,7 @@ class PosController extends Controller
             'orderType',
             'existingOrderTotal',
             'existingOrderItems',
+            'existingOrderDetails',
             'existingLoyaltyCandidates'
         ));
     }

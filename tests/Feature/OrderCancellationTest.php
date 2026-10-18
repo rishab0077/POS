@@ -34,6 +34,160 @@ class OrderCancellationTest extends TestCase
         return $order;
     }
 
+    private function cancelOne(Order $order, int $expectedQuantity, array $overrides = [])
+    {
+        return $this->cancel($order, array_replace([
+            'orderDetailId' => $order->orderDetails()->firstOrFail()->id,
+            'expectedQuantity' => $expectedQuantity,
+        ], $overrides));
+    }
+
+    public function test_one_unit_cancellation_updates_preview_and_audits_without_changing_ticket_status(): void
+    {
+        $order = $this->ticket(OrderStatus::Processing);
+        $detail = $order->orderDetails()->firstOrFail();
+        $detail->update(['quantity' => 3]);
+        $order->update(['total' => (float) $detail->unit_price * 3]);
+        $billId = BillHelper::createTableBill($order->table_id);
+        $waiter = $this->staff(UserRole::Waiter);
+        $this->actingAs($waiter);
+
+        $this->cancelOne($order, 3)->assertOk();
+
+        $this->assertSame(2, (int) $detail->fresh()->quantity);
+        $this->assertSame(OrderStatus::Processing, $order->fresh()->status);
+        $this->assertSame((float) $detail->unit_price * 2, (float) $order->fresh()->total);
+        $this->assertSame((float) $order->fresh()->total, (float) Bill::findOrFail($billId)->bill_amount);
+        $this->assertSame('running', $order->table->fresh()->status->value);
+        $this->assertDatabaseHas('audit_events', ['event_type' => 'order_item_cancelled', 'user_id' => $waiter->id]);
+        $this->assertDatabaseCount('order_details', 1);
+    }
+
+    public function test_last_unit_cancels_ticket_and_preserves_the_zero_quantity_row(): void
+    {
+        $order = $this->ticket(OrderStatus::Served);
+        $detail = $order->orderDetails()->firstOrFail();
+        $billId = BillHelper::createTableBill($order->table_id);
+
+        $this->cancelOne($order, 1)->assertOk();
+
+        $this->assertSame(0, (int) $detail->fresh()->quantity);
+        $this->assertCount(0, $order->fresh()->orderDetails);
+        $this->assertSame(OrderStatus::Cancelled, $order->fresh()->status);
+        $this->assertSame('available', $order->table->fresh()->status->value);
+        $this->assertSoftDeleted('bills', ['id' => $billId]);
+        $this->assertDatabaseCount('order_details', 1);
+        $this->assertDatabaseCount('audit_events', 2);
+    }
+
+    public function test_cancelled_line_is_absent_from_kot_and_final_invoice_for_remaining_items(): void
+    {
+        $order = $this->ticket();
+        $removed = $order->orderDetails()->firstOrFail();
+        $other = Menu::where('id', '!=', $removed->menu_id)->firstOrFail();
+        $order->orderDetails()->create(['menu_id' => $other->id, 'quantity' => 2, 'unit_price' => $other->price]);
+        $order->update(['total' => (float) $removed->unit_price + 2 * (float) $other->price]);
+        $this->cancelOne($order, 1)->assertOk();
+
+        $this->assertSame(OrderStatus::New, $order->fresh()->status);
+        $this->assertFalse(\App\Helpers\KitchenHelper::getKOTOrders($order->KOT)->has($removed->menu->name));
+        $bill = BillHelper::finalizeBill(BillHelper::createTableBill($order->table_id), 'cash');
+        $this->assertSame(2 * (float) $other->price, (float) $bill->bill_amount);
+        $this->assertDatabaseMissing('fiscal_invoice_items', ['source_order_detail_id' => $removed->id]);
+        $this->assertDatabaseHas('fiscal_invoice_items', ['item_name' => $other->name, 'quantity' => 2]);
+    }
+
+    public function test_stale_and_cross_ticket_item_cancellations_do_not_remove_more_food(): void
+    {
+        $order = $this->ticket();
+        $detail = $order->orderDetails()->firstOrFail();
+        $detail->update(['quantity' => 3]);
+        $order->update(['total' => 3 * (float) $detail->unit_price]);
+        $otherOrder = $this->ticket();
+
+        $this->cancelOne($order, 3, ['orderDetailId' => $otherOrder->orderDetails()->first()->id])->assertNotFound();
+        $this->cancelOne($order, 3)->assertOk();
+        $this->cancelOne($order, 3)->assertUnprocessable();
+        $this->cancelOne($order, 2, ['reason' => ''])->assertUnprocessable();
+        $this->cancelOne($order, 2, ['expectedQuantity' => null])->assertUnprocessable();
+        $this->assertSame(2, (int) $detail->fresh()->quantity);
+    }
+
+    public function test_item_cancellation_rejects_finalized_and_soft_deleted_final_invoices(): void
+    {
+        $order = $this->ticket();
+        $bill = BillHelper::finalizeBill(BillHelper::createTableBill($order->table_id), 'cash');
+        $this->cancelOne($order, 1)->assertUnprocessable();
+        $bill->delete();
+        $this->cancelOne($order, 1)->assertUnprocessable();
+        $this->assertSame(1, (int) $order->orderDetails()->first()->quantity);
+    }
+
+    public function test_one_unit_cancellation_refreshes_unfinished_print_payloads_and_blocks_empty_area_retry(): void
+    {
+        $order = $this->ticket();
+        $detail = $order->orderDetails()->firstOrFail();
+        $detail->update(['quantity' => 3]);
+        $order->update(['total' => 3 * (float) $detail->unit_price]);
+        $station = PrintStation::create(['name' => 'Item cancellation printer', 'enabled' => true,
+            'token_hash' => hash('sha256', 'item-cancel-test'), 'printer_map' => ['kitchen' => 'Printer']]);
+        $job = PrintJob::create(['idempotency_key' => 'partial-cancel', 'type' => 'kot', 'printer_key' => 'kitchen',
+            'source_type' => Order::class, 'source_id' => $order->id, 'status' => 'processing',
+            'print_station_id' => $station->id, 'locked_until' => now()->subMinute(),
+            'payload_format' => 'escpos_base64', 'payload' => base64_encode('stale ticket')]);
+        $this->cancelOne($order, 3)->assertOk();
+        $this->assertSame(app(\App\Services\PrintPayloadService::class)
+            ->kotPayload($order->KOT, null, 'kitchen', 'KOT'), $job->fresh()->payload);
+        $this->assertSame(1, PrintJob::availableForStation($station)->count());
+
+        $other = Menu::where('id', '!=', $detail->menu_id)->firstOrFail();
+        $barCategory = \App\Models\Category::create(['name' => 'Cancellation bar', 'print_destination' => 'bot', 'rank' => 100]);
+        $other->category()->sync([$barCategory->id]);
+        $order->orderDetails()->create(['menu_id' => $other->id, 'quantity' => 1, 'unit_price' => $other->price]);
+        $this->cancelOne($order, 2)->assertOk();
+        $this->cancelOne($order, 1)->assertOk();
+        $this->assertSame('cancelled', $job->fresh()->status);
+        $job->markFailed($station, 'Late failure acknowledgement');
+        $this->assertSame('cancelled', $job->fresh()->status);
+        $this->assertFalse($job->retry(auth()->user()));
+    }
+
+    public function test_item_cancellation_clamps_preview_rewards_and_rolls_back_on_bill_failure(): void
+    {
+        $order = $this->ticket();
+        $detail = $order->orderDetails()->firstOrFail();
+        $detail->update(['quantity' => 2, 'loyalty_reward_quantity' => 2,
+            'loyalty_original_unit_price' => $detail->unit_price, 'loyalty_redeemed_by' => auth()->id(),
+            'loyalty_redeemed_at' => now()]);
+        $order->update(['total' => 0]);
+        $billId = BillHelper::createTableBill($order->table_id);
+        Bill::saving(function () { throw new \RuntimeException('Simulated preview failure'); });
+        try {
+            $this->cancelOne($order, 2)->assertStatus(500);
+            $this->assertSame(2, (int) $detail->fresh()->quantity);
+            $this->assertDatabaseCount('audit_events', 0);
+        } finally {
+            Bill::flushEventListeners();
+        }
+        $this->cancelOne($order, 2)->assertOk();
+        $this->assertSame(1, (int) $detail->fresh()->loyalty_reward_quantity);
+        $this->assertSame(0.0, (float) Bill::findOrFail($billId)->bill_amount);
+    }
+
+    public function test_quantity_controls_render_on_waiter_pos_and_kot_and_sync_reports_quantity_changes(): void
+    {
+        $order = $this->ticket();
+        $menu = $order->orderDetails()->firstOrFail()->menu;
+        $this->get(route('pos.main', ['tableId' => $order->table_id]))->assertOk()
+            ->assertSee('data-cancel-one', false)->assertSee('addItemToOrder(' . $menu->id, false);
+        $this->actingAs($this->staff(UserRole::Waiter));
+        $this->get(route('waiter.order', $order->table_id))->assertOk()
+            ->assertSee('data-cancel-one', false)->assertSee('Confirm cancellation');
+        $this->get(route('order.KOT.view'))->assertOk()->assertSee('data-add-one', false);
+        $this->actingAs(User::where('category_id', 1)->firstOrFail());
+        $this->get(route('kitchen.pending.orders'))->assertOk()->assertJsonPath('orders.0.item_count', 1);
+    }
+
     private function staff(UserRole $role): User
     {
         $user = User::where('category_id', 1)->firstOrFail()->replicate(['username', 'email']);
