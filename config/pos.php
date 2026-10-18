@@ -94,6 +94,7 @@ return [
     'cancellation_reasons' => [
         'Item Unavailable',
         'Customer Changed Mind',
+        'Customer Cancelled Booking',
         'Wrong Item Sent',
         'Duplicate Entry',
         'Other',

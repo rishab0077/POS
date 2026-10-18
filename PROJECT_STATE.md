@@ -1,6 +1,6 @@
 # Restaurant POS — Living Project State
 
-Last updated: 2026-10-13
+Last updated: 2026-10-18
 
 This file is the shared handoff for the project. Every agent or chat that implements a material repository change must update it in the same task, as required by `AGENTS.md`; plans must remain clearly separated from completed work.
 
@@ -21,13 +21,31 @@ This file is the shared handoff for the project. Every agent or chat that implem
 - Production images exclude Node.js and npm and include the MariaDB backup client and MySQL 8 authentication connector required by `backup:database`.
 - `npm ci` and the production frontend build complete with zero reported npm vulnerabilities.
 - Production uses the database queue; the test profile uses the synchronous queue.
-- Automated verification currently passes: **156 tests, 875 assertions**, plus two JavaScript workflow regressions.
+- Latest recorded PHP verification (2026-10-15): **168 tests, 960 assertions**. Three JavaScript regressions and the production frontend build passed again on 2026-10-18. The restaurant server remains on deployed `f967a0d` pending cancellation rollout.
 
 ## Completed work
 
-### 2026-10-13 — LAN reliability repairs (application complete; deployment pending)
+### 2026-10-18 — Cancellation release preparation and server backups (rollout pending)
 
-The ten audit findings were verified through failing baseline regressions and tracing their callers before implementation. Repairs were completed in phases; these changes are in the repository and have not been deployed to Amber or the port 8097 preview.
+Reviewed the cancellation controllers, shared status guards, printer-job handling, routes, screens, and regression coverage for source publication. Local and remote deployment branches matched at `f967a0d` before publication. Three JavaScript tests, the production Vite build, and diff checks passed again. Docker is not running on the development PC, so PHP tests, PHP syntax, and Blade compilation were not rerun today; their latest recorded successful verification remains 2026-10-15. No migration files changed.
+
+Operator screenshots confirm Sanjay's existing `C:\RestaurantPOS` installation remains at `f967a0d`, with all six services running and MySQL/Nginx healthy. Configuration copies in `C:\RestaurantPOS-local-backup-20261018-200949` passed hash comparisons with restricted folder permissions. The database backup passed gzip integrity and copied-file SHA-256 checks (24,871 bytes); restore validation was skipped. The running app/web images received rollback tags `restaurant-pos-rollback-app:20261018-200949` and `restaurant-pos-rollback-web:20261018-200949`, and were exported to a 92,089,856-byte archive. Environment and printer configuration contents were not printed or added to source control.
+
+Deployment remains pending: preserve local agent/Docker exclusions across the pull, prepare exact rollback commands, build release images, take a cutover backup, clear caches and recreate affected services, then verify HTTP health, printer communication, and waiter cancellation. Building alone does not update containers. Physical printing, backup restore, and staff acceptance remain unverified. The separate `restaurant-pos-split-preview` deployment is untouched; no live IRD request was performed.
+
+### 2026-10-15 — Staff cancellation after KOT (verified locally; deployment pending)
+
+Implemented waiter, cashier, manager, administrator/owner, and kitchen cancellation of whole unfinalized tickets in New, Processing, Ready for Pickup, and Served states. Controls are shared by KOT and table-order screens; the waiter order screen links to its table's tickets. The generic cancellation route also works when the kitchen module is disabled. A reason is required, including Customer Cancelled Booking; notes and the cancelling operator are retained in the audit trail. KOT polling pauses while the cancellation form is open so it does not discard the operator's input.
+
+Cancellation recalculates unpaid previews or soft-deletes empty ones, preserves order lines, releases an empty table or keeps remaining paid tickets finalized, suppresses unsent KOT/BOT/summary jobs, and blocks printer retry or expired-lease reclaim after cancellation. Status writes share table/order locks and reject revival of cancelled/closed tickets or closure of unpaid tickets. Final invoices, including legacy soft-deleted final invoices, remain protected and require returns.
+
+Verification completed on 2026-10-15 after Docker recovered: twelve focused cancellation tests passed (84 assertions before the expired-lease assertion was added); the final complete suite passed 168 tests / 960 assertions, including that assertion. Three Node workflow regressions, JavaScript/PHP syntax, production Vite build, Blade compilation/rendered waiter/KOT screens, and diff checks passed. No verification was blocked at that handoff. No new migration is required. The cancellation extension is included in this release; restaurant and isolated-preview deployment remain pending.
+
+Limits: already printed or in-flight tickets cannot be physically recalled; staff must notify the kitchen. Prepared-food wastage uses the existing manual inventory workflow rather than automatic stock restoration/deduction. This is whole-ticket cancellation, not partial item removal. The six other follow-up audit findings remain unfixed; the order-state finding is now fixed and verified in the working tree, while the live server retains the previous behavior until rollout.
+
+### 2026-10-13 — LAN reliability repairs (deployed to the restaurant server on 2026-10-14)
+
+The ten audit findings were verified through failing baseline regressions and tracing their callers before implementation. Repairs were completed in phases and pushed as `f967a0d`. Operator screenshots confirm deployment to the existing restaurant LAN server on 2026-10-14; this task did not update the isolated port 8097 preview.
 
 | Finding | Verified cause and implemented correction |
 |---|---|
@@ -49,7 +67,18 @@ The ten audit findings were verified through failing baseline regressions and tr
 
 Verification: 156 PHP tests / 875 assertions; 17 focused workflow/payment/report tests / 162 assertions before the final full run; two Node workflow regressions; PHP syntax checks; Docker test-image build including the production Vite build; Blade compilation; complete migration rollback on the disposable `restaurant-pos-automated` database; and `git diff --check`. No live IRD requests or production-data migrations were performed.
 
-Remaining release steps: back up the actual installation, rebuild and deploy its application/frontend/worker images, then verify closing and reusing a table, cancellation, KOT updates from two staff devices, and physical receipt printing. No code fix is blocked. Live installation and hardware acceptance remain pending. Existing duplicate KOTs or previously deleted history are not rewritten; old bills without snapshots cannot recover missing sale-time names/categories. No new forward migration is required by these repairs, but any previously pending release migrations still apply.
+Remaining acceptance steps: verify closing and reusing a table, cancellation, KOT updates from two staff devices, and physical receipt printing. The ten repairs are deployed, but these operator checks remain pending. Existing duplicate KOTs or previously deleted history are not rewritten; old bills without snapshots cannot recover missing sale-time names/categories. No new forward migration is required by these repairs.
+
+### 2026-10-14 — Restaurant LAN deployment and follow-up audit
+
+- Evidence is operator-provided screenshots and the user's health-check result, not direct remote access. The existing installation is `C:\RestaurantPOS`, Compose project `restaurant-pos`.
+- The database backup completed and gzip/file integrity validation passed. A restore test was explicitly skipped; no restored-copy validation is claimed.
+- The operator preserved the existing environment and printer configuration outside the checkout, stashed and restored the local print-agent customization, and added local Docker/Git exclusions for printer credentials and environment backups. No secrets are recorded here.
+- Git fast-forwarded from `c8ff84b` to `f967a0d`; application and web images built successfully. App, Nginx, queue, and scheduler were stopped, caches cleared, and all four services recreated and started. MySQL/storage volumes were preserved. The migration command reported `Nothing to migrate`.
+- The user confirmed `/health` returned `status: ok`. The final log screenshot shows HTTP 200 print-station heartbeats; this verifies agent communication, not physical receipt output. Final phone, table-workflow, and thermal-printer acceptance remain pending.
+- A separate read-only audit reran the existing suite: 156 tests passed with 875 assertions. Temporary probes outside the repository reproduced seven additional bugs; none of those seven were implemented or deployed as fixes.
+
+Open audit findings (planned corrections only): unrestricted order status changes can close unpaid tickets or revive cancelled tickets; stale purchase edits can rewrite posted items; stale stock forms overwrite newer quantities/costs; a refused table deletion deletes reservations; stale failure acknowledgements overwrite completed print jobs; reservation dates remain strings and crash booking/edit flows; and purchase voids leave average-cost valuation incorrect.
 
 ### Generic product conversion
 
@@ -307,7 +336,7 @@ Key files:
 - Item and category sales reports count all served quantities but exclude the rewarded units from sales revenue.
 - Existing dine-in menu lines are visible wherever an operator acts on an existing bill: the main POS order screen shows read-only existing lines alongside editable new items, the waiter order screen pairs its current-table total with the existing lines, and Final Bill shows the selected billing source's ordered items. Bill Preview, finalized bill detail, and browser/thermal receipts remain itemized; table, bill, and credit index pages intentionally remain compact summaries with detail actions.
 - Release verification completed on 2026-09-14: focused itemized unpaid-preview and final-payment loyalty coverage passed with 5 tests and 52 assertions; the complete suite passed with 140 tests and 793 assertions; JavaScript syntax, the Vite production build, Blade rendering through HTTP tests, and `git diff --check` passed.
-- Production images for the isolated `restaurant-pos-split-preview` stack were rebuilt with the unpaid-preview flow, all six services were recreated and started, no migrations were pending, MySQL reported healthy, and `/health` returned `{"status":"ok"}`. Amber still runs the split-only release; repeat the migration plus phone/thermal-printer smoke test before enabling loyalty there.
+- Production images for the isolated `restaurant-pos-split-preview` stack were rebuilt with the unpaid-preview flow, all six services were recreated and started, no migrations were pending, MySQL reported healthy, and `/health` returned `{"status":"ok"}`. That preview check predated the restaurant rollout. The operator deployed f967a0d on 2026-10-14 with no pending migrations; cashier, phone, and thermal-printer acceptance remain pending.
 - CBMS remains disabled. During controlled acceptance, confirm with the restaurant's tax adviser/IRD that an item retained on the invoice at zero payable price is the accepted treatment for this physical-card promotion before enabling automatic delivery.
 
 Key files:
@@ -355,9 +384,11 @@ Key files:
 
 ## Current readiness
 
-The 2026-10-13 LAN reliability repairs have passed isolated automated verification. Amber and the port 8097 preview have not been updated by this task; their previously recorded deployment state remains unchanged. Phone/browser and physical-printer acceptance of this repair release is still required after deployment.
+Staff cancellation after KOT, including waiter access, is implemented and verified locally with 168 passing PHP tests and three JavaScript tests. It requires a new source/image rollout before restaurant users receive the change. Final-invoice cancellation continues to use returns; physical printer and phone acceptance of this extension remain pending.
 
-The core POS, including exact two-method split tender payments and physical stamp-card loyalty rewards, and the local CBMS sales-bill and partial/full credit-note outboxes are working and covered by automated tests. Internal receivable reversal, payment-refund records, net reporting, and waste-by-default returned-item handling are implemented. Phase 7A production-readiness and Phase 7B controlled-acceptance tooling are complete. The loyalty release has passed an isolated six-service Compose migration and health smoke test. An operator-provided diagnostic from the Amber POS installation confirmed the reserved LAN address, private network profile, scoped firewall rule, six healthy/running Compose services, HTTP health checks, current split-payment migration, scheduler heartbeat, database backup, an online Windows print station, and its logon-triggered agent task; Amber has not yet received the loyalty migration. The live Phase 7B acceptance exercise still requires taxpayer credentials, IRD coordination, and operator verification in the IRD portal. The application is **not yet approved for live IRD CBMS use**, and no live acceptance test has been performed.
+The 2026-10-13 LAN reliability repairs passed isolated automated verification and were deployed to the existing restaurant LAN server on 2026-10-14, as confirmed by operator screenshots and the health result. The isolated port 8097 preview was not updated by this task. Phone/browser, table-workflow, and physical-printer acceptance remain pending. The live server still has the seven follow-up findings; the working-tree cancellation extension resolves the order-state issue, while the other six remain open.
+
+The core POS, including exact two-method split tender payments and physical stamp-card loyalty rewards, and the local CBMS sales-bill and partial/full credit-note outboxes are working and covered by automated tests. Internal receivable reversal, payment-refund records, net reporting, and waste-by-default returned-item handling are implemented. Phase 7A production-readiness and Phase 7B controlled-acceptance tooling are complete. The loyalty release has passed an isolated six-service Compose migration and health smoke test. An operator-provided diagnostic from the Amber POS installation confirmed the reserved LAN address, private network profile, scoped firewall rule, six healthy/running Compose services, HTTP health checks, current split-payment migration, scheduler heartbeat, database backup, an online Windows print station, and its logon-triggered agent task. That diagnostic predated the 2026-10-14 rollout; the current server reports no pending migrations, while loyalty operational acceptance remains pending. The live Phase 7B acceptance exercise still requires taxpayer credentials, IRD coordination, and operator verification in the IRD portal. The application is **not yet approved for live IRD CBMS use**, and no live acceptance test has been performed.
 
 CBMS remains off with `CBMS_ENABLED=false`. This allows normal local use and records finalized invoices as pending submissions without contacting IRD.
 
@@ -385,6 +416,8 @@ CBMS remains off with `CBMS_ENABLED=false`. This allows normal local use and rec
 
 ## Verification history
 
+- 2026-10-15: cancellation extension — twelve focused cases passed, then complete suite 168 passed / 960 assertions. Three Node regressions, PHP/JavaScript syntax, production Vite build, Blade compilation and rendered-screen checks, and diff checks passed. Docker startup blockage resolved; no live restaurant deployment or IRD request was performed.
+- 2026-10-14: unchanged application suite passed again — 156 tests, 875 assertions; separate temporary audit probes reproduced seven additional unfixed issues. Operator evidence confirms restaurant-server backup integrity, image builds, no pending migrations, recreation/start of four application services, passing HTTP health, and successful print-station heartbeats. Backup restore and staff-device/physical-print acceptance were not performed.
 - 2026-10-13: phased LAN reliability repairs — complete suite 156 passed, 875 assertions; focused suite 17 passed, 162 assertions; two JavaScript regressions passed. Independent-worker purchase/payment/return races, PHP syntax, production Vite build, Docker test-image build, Blade compilation, complete isolated migration rollback, and diff checks passed. Live restaurant deployment was not changed.
 - 2026-07-17: fiscal snapshot focused tests — 2 passed, 12 assertions.
 - 2026-07-17: CBMS and fiscal focused tests — 4 passed, 26 assertions.
@@ -453,6 +486,18 @@ CBMS remains off with `CBMS_ENABLED=false`. This allows normal local use and rec
 - 2026-09-14: rebuilt and recreated the isolated port 8097 preview with the corrected item list, confirmed no pending migrations, and received `{"status":"ok"}` from `/health`.
 
 ## Change log
+
+### 2026-10-15
+
+- Added cancellation after KOT for all operational staff, including waiters, from shared ticket controls and a waiter table-order link; required reason/optional notes and cancelling actor are retained.
+- Added atomic unpaid-preview/table cleanup, unsent print-job cancellation and retry/expired-lease suppression, and guards against reviving cancelled tickets or closing unpaid tickets. Preserved final invoice/return protections and order history.
+- Verified twelve cancellation cases and the complete 168-test suite, frontend tests/build, PHP/JavaScript syntax, and Blade rendering. Restaurant deployment and physical-device acceptance remain pending.
+
+### 2026-10-14
+
+- Guided and recorded the operator's deployment of `f967a0d` to the existing restaurant LAN installation after database backup/integrity validation and preservation of local environment/printer customization.
+- Confirmed builds, migration/cache commands, four service restarts, HTTP health, and printer-agent communication from operator evidence. Recorded backup restore, phone/table workflow, and physical-print checks as pending.
+- Reported seven additional bugs from a read-only follow-up audit; these remain open and are not part of the deployed fixes.
 
 ### 2026-10-13
 

@@ -13,6 +13,9 @@
             <h1 class="text-xl font-bold text-gray-800">
                 Table: <span class="text-blue-600">{{ $table->name }}</span>
             </h1>
+            <a href="{{ route('waiter.table.orders', $table->id, false) }}" class="font-semibold text-red-700 underline">
+                View / cancel existing orders
+            </a>
             <div class="grid w-full grid-cols-3 gap-2 text-right sm:w-auto sm:gap-5">
                 <div>
                     <p class="text-xs text-gray-600 sm:text-sm">Current table</p>

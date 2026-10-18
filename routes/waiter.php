@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\WaiterController;
+use App\Http\Controllers\POS\PosController;
 use App\Http\Controllers\RequestController;
 
 /**
@@ -15,6 +16,7 @@ Route::middleware(['private.access', 'auth', 'waiter'])->name('waiter.')->prefix
     Route::get('/', [WaiterController::class, 'index'])->name('index');
 
     Route::get('/order/{table}', [WaiterController::class, 'orderScreen'])->name('order');
+    Route::get('/table/orders/{tableId}', [PosController::class, 'tableOrders'])->name('table.orders');
 
     Route::get('/choosetable', [WaiterController::class, 'chooseTable'])->name('tables.index');
 });

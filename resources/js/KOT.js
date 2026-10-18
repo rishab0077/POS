@@ -80,6 +80,7 @@ function kotErrorMessage(error, fallback) {
 }
 
 function checkOrderUpdates() {
+    if (document.querySelector('details[open] [data-order-cancellation]')) return;
     $.ajax({
         url: checkOrderUpdatesRoute,
         method: "GET",

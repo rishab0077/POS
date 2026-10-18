@@ -1,4 +1,7 @@
-<x-pos-layout>
+@php
+    $ordersLayout = auth()->user()->isWaiter() ? 'waiter-layout' : 'pos-layout';
+@endphp
+<x-dynamic-component :component="$ordersLayout">
     @section('title', 'View Table Orders')
     <style>
         .waiter-orders {
@@ -10,7 +13,7 @@
     </style>
 
     @php
-        $currentOrderComponent = 'order-running-component-for-admin';
+        $currentOrderComponent = auth()->user()->isWaiter() ? 'order-component-for-waiter' : 'order-running-component-for-admin';
     @endphp
     <div class="container">
 
@@ -41,4 +44,4 @@
 
     </div>
 
-</x-pos-layout>
+</x-dynamic-component>

@@ -15,6 +15,7 @@ class PrintJob extends Model
     public const STATUS_PROCESSING = 'processing';
     public const STATUS_PRINTED = 'printed';
     public const STATUS_FAILED = 'failed';
+    public const STATUS_CANCELLED = 'cancelled';
 
     protected $fillable = [
         'idempotency_key',
@@ -75,6 +76,10 @@ class PrintJob extends Model
 
         return $query
             ->whereIn('printer_key', $printerKeys)
+            ->whereNotExists(fn ($orders) => $orders->selectRaw('1')->from('orders')
+                ->whereColumn('orders.id', 'print_jobs.source_id')
+                ->where('print_jobs.source_type', Order::class)
+                ->where('orders.status', \App\Enums\OrderStatus::Cancelled->value))
             ->whereRaw('attempts < COALESCE(max_attempts, 3)')
             ->where(function ($query) {
                 $query
@@ -143,7 +148,8 @@ class PrintJob extends Model
             ]);
 
             $job->update([
-                'status' => self::STATUS_FAILED,
+                'status' => $job->source_type === Order::class && $job->source?->status === \App\Enums\OrderStatus::Cancelled
+                    ? self::STATUS_CANCELLED : self::STATUS_FAILED,
                 'print_station_id' => $station->id,
                 'failed_at' => $completedAt,
                 'locked_until' => null,
@@ -162,6 +168,9 @@ class PrintJob extends Model
             $job = self::query()->lockForUpdate()->findOrFail($this->id);
 
             if ($job->status !== self::STATUS_FAILED) {
+                return false;
+            }
+            if ($job->source_type === Order::class && $job->source?->status === \App\Enums\OrderStatus::Cancelled) {
                 return false;
             }
 

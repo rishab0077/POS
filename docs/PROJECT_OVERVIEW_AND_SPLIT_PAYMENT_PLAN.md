@@ -1,8 +1,8 @@
 # Restaurant POS — Project Overview and Split-Payment Plan
 
-Last reviewed: 2026-10-13
+Last reviewed: 2026-10-18
 Branch: `local-lan-deployment`
-Revision reviewed: phased LAN reliability repairs in the working tree
+Revision reviewed: cancellation release based on `f967a0d`; restaurant deployment remains at `f967a0d`
 
 ## Executive summary
 
@@ -26,7 +26,7 @@ Project-state documentation is updated as part of the same agent task that compl
 - Runtime: Docker Compose with PHP-FPM, Nginx, MySQL, Soketi, queue worker, and scheduler services.
 - Deployment: one installation per restaurant, available on a trusted local network through a reserved server IP.
 - Current development branch: `local-lan-deployment`.
-- Latest recorded automated verification: 156 tests passed with 875 assertions, plus two JavaScript workflow regressions.
+- Latest recorded automated verification: 168 tests passed with 960 assertions, plus three JavaScript workflow regressions.
 
 ## Implemented features
 
@@ -124,7 +124,9 @@ Live status:
 
 ## Current readiness
 
-The 2026-10-13 repair release is implemented and verified in the repository. It has not been deployed to Amber or the port 8097 preview. The earlier deployment checks below describe those earlier releases.
+On 2026-10-18, release preparation reran all three JavaScript tests and the production frontend build successfully. Docker is stopped on the development PC, so the PHP/Blade results remain the recorded 2026-10-15 verification. Operator screenshots confirm Sanjay's six-service installation is still on `f967a0d`; restricted configuration backups, database gzip/copied-file SHA-256 checks, and saved running app/web images are complete. Backup restore validation was skipped. Pull, image builds, cache clearing, service recreation, and server acceptance remain pending; the separate preview is untouched. See `PROJECT_STATE.md` for backup and rollback-image locations.
+
+The 2026-10-13 repair release is implemented, regression-tested, and deployed to the existing restaurant LAN server as of 2026-10-14. Deployment evidence comes from operator screenshots and the user's passing health result. The isolated port 8097 preview was not updated by this task; the older preview checks below describe its earlier release. Of the seven follow-up findings, the order-state issue is now fixed in the locally verified cancellation extension; the other six remain open. The live server retains all seven until the extension is deployed.
 
 | Area | State |
 |---|---|
@@ -139,8 +141,9 @@ The 2026-10-13 repair release is implemented and verified in the repository. It 
 | IRD automatic production delivery | Not authorized or enabled |
 | Split payment | Implemented and regression-tested; final phone smoke test recommended after redeployment |
 | Phone POS and Bills layout | Responsive overflow fixes implemented and regression-tested |
-| Physical stamp-card loyalty | Unpaid-preview and final-payment flows implemented, regression-tested, and running in the isolated preview; Amber deployment plus phone/thermal smoke test pending |
-| LAN reliability repair release | All ten audit fixes implemented and tested; live rollout and staff-device/printer acceptance pending |
+| Physical stamp-card loyalty | Implemented and regression-tested; restaurant server at `f967a0d` reports no pending migrations; cashier/phone/thermal acceptance remains pending |
+| LAN reliability repair release | All ten audit fixes deployed to the restaurant server; HTTP health and printer-agent communication pass; staff-device/table/physical-print acceptance pending |
+| Cancellation after KOT, including waiters | Implemented and verified locally: twelve cancellation cases and full suite 168 tests / 960 assertions pass; restaurant rollout and phone/physical-print acceptance pending |
 
 The isolated Compose project `restaurant-pos-split-preview` uses port 8097 and separate seeded volumes. Production images containing the newer unpaid-preview flow were built and all six services were recreated on 2026-09-07. No migrations were pending, MySQL reported healthy, and `/health` returned `{"status":"ok"}`. The older local database volume was not migrated because its stored credentials no longer match the current deployment environment; it remains untouched pending credential recovery or an explicitly authorized recovery procedure.
 
@@ -148,6 +151,8 @@ The port 8097 preview contains the split-payment, mobile/currency, unpaid-previe
 
 ## Known limitations
 
+- The cancellation extension has passed local verification but is not deployed. The live server still uses `f967a0d` and its earlier kitchen-only cancellation path. Final invoices require returns; paper already printed or an in-flight print cannot be recalled, and prepared-food wastage requires existing manual inventory operations.
+- Six follow-up audit findings remain unfixed: stale purchase edits, stale stock forms, reservation loss during refused table deletion, stale printer acknowledgements, reservation datetime casting, and purchase-void cost valuation. Order-state guards are fixed and tested in the cancellation extension, but are not part of deployed `f967a0d`.
 - The repair release prevents new duplicate KOT allocation and protects existing order lines, but does not rewrite old duplicate tickets or reconstruct previously deleted history. Reports for old bills without fiscal snapshots retain a legacy fallback whose missing sale-time identity cannot be recovered.
 - Split tender currently supports exactly two direct payment methods and does not support mixing credit with a direct collection.
 - Fonepay, card, eSewa, Khalti, and bank-transfer selections are accounting records; the POS does not initiate or verify payment-gateway transactions.
@@ -161,6 +166,8 @@ The port 8097 preview contains the split-payment, mobile/currency, unpaid-previe
 
 ## 2026-10-13 LAN reliability repairs
 
+The cancellation extension was completed and verified locally on 2026-10-15. It adds shared controls for waiters and other operational staff, required reasons and actor auditing, cancellation of unfinalized ready/served tickets, unpaid-preview/table cleanup, and suppression of unsent printer jobs, manual retries, and expired-lease reclaims. Status guards prevent reviving cancelled tickets or closing unpaid tickets, and KOT polling preserves an open cancellation form. Waiters can use KOT View or open their table's existing orders through the new link. Final invoices remain protected. Twelve cancellation cases passed; the complete suite passed 168 tests / 960 assertions, with three Node regressions, PHP/JavaScript syntax, production frontend build, Blade compilation/rendered-screen tests, and diff checks. Docker recovered for that verification. No new migration is required; this release includes the cancellation extension, with restaurant rollout still pending. Whole-ticket cancellation cannot recall paper already printed or stop an in-flight print; notify the kitchen and record prepared-food wastage through existing inventory operations.
+
 Completed phases:
 
 1. **Workflow:** table clicks follow the current status; cancelling the last unpaid ticket releases the table; invoiced tickets require returns; checkout failures roll back orders and bills; settlement closes orders/bills atomically; KOT polling detects other operators and status changes without empty-screen or waiter-view reload loops.
@@ -168,7 +175,9 @@ Completed phases:
 3. **Financial integrity:** purchase posting/voiding use current locked invoice state; invoice-linked supplier payments require posted invoices and cannot overpay; return issuance reads accumulated quantities only after locking the bill. Real independent-process races verify these protections.
 4. **Verification:** the full suite passed with 156 tests and 875 assertions, two JavaScript regressions passed, and PHP syntax, production Vite build, Docker test-image build, Blade compilation, and diff checks passed. An additional verified migration rollback defect was fixed by dropping `bill_orders` before `bills`; complete rollback succeeded on the disposable test database.
 
-No application fix is blocked. Deployment remains pending: back up the actual installation, rebuild and deploy the application/frontend/worker images, then check table finalization/closure/reuse, cancellation, KOT changes across two staff devices, and physical receipts. These repairs add no forward migration; previously pending release migrations must still be checked. CBMS activation remains separate and was not changed or tested against live IRD.
+Operator screenshots confirm rollout of `f967a0d` on 2026-10-14 in `C:\RestaurantPOS`, using the existing `restaurant-pos` Compose project and volumes. The database backup and gzip/file integrity checks passed; restore validation was skipped. Local environment/printer files were preserved, the print-agent customization restored, and local Docker/Git exclusions added for credentials. Application/web images built successfully; app, Nginx, queue, and scheduler were recreated after cache clearing, and the migration command reported no work. The user confirmed healthy HTTP status, and logs show HTTP 200 printer-agent heartbeats. This does not establish physical print success or complete staff acceptance.
+
+Remaining operator checks: table finalization/closure/reuse, cancellation, KOT changes across two staff devices, and physical receipts. The isolated preview remains on its earlier release. CBMS activation remains separate; no live IRD acceptance was performed. That deployed release does not contain the later audit fixes. The locally verified cancellation extension addresses the order-state finding; the remaining six are still open.
 
 Regression commands use the isolated test Compose project, never the restaurant database:
 
@@ -186,7 +195,7 @@ Implementation completed and regression-verified through the unpaid-preview flow
 
 The server validates eligibility and quantity independently of the browser and applies rewards inside the locked bill-finalization transaction. Rewarded quantities remain on KOT/BOT tickets and consume inventory normally, but their sales price is zero. Final fiscal snapshots preserve separate paid and reward lines, the regular price, category, cashier, approval time, and proportional inventory deduction. Receipts label the reward. **Reporting → Discounts** shows total free-item quantity and value plus each invoice, item, category, quantity, and approving cashier. Item/category sales reports count all served units while excluding rewarded units from revenue.
 
-This feature deliberately does not create customer profiles, points balances, digital card identifiers, manager approval, or payment-provider integration. Existing categories remain ineligible until explicitly enabled. The refreshed isolated preview is running with all migrations applied and a passing HTTP health check; Amber still requires deployment and a staff-device/thermal-receipt smoke test.
+This feature deliberately does not create customer profiles, points balances, digital card identifiers, manager approval, or payment-provider integration. Existing categories remain ineligible until explicitly enabled. The refreshed isolated preview is running with all migrations applied and a passing HTTP health check; The restaurant server was updated to f967a0d on 2026-10-14 and reports no pending migrations; cashier, staff-device, and thermal-receipt acceptance remain pending.
 
 ## Implemented Feature: Optional staff email
 

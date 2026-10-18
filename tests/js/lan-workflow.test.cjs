@@ -34,7 +34,7 @@ test('table clicks follow the current status after settlement and finalization',
 
 test('KOT polling compares visible IDs and statuses, including an empty screen', () => {
     const source = fs.readFileSync('resources/js/KOT.js', 'utf8');
-    let visible = [], orders = [], reloads = 0;
+    let visible = [], orders = [], reloads = 0, cancellationOpen = false;
     const jq = () => ({
         map(callback) {
             const values = visible.map(row => callback.call(row));
@@ -45,6 +45,7 @@ test('KOT polling compares visible IDs and statuses, including an empty screen',
     jq.ajax = options => options.success({ status: 'success', hasNewOrders: true, orders });
     const context = {
         $: jq, console, checkOrderUpdatesRoute: '/sync/check-pending-orders-updates',
+        document: { querySelector: () => cancellationOpen },
         window: { location: { reload() { reloads++; } } },
     };
     vm.createContext(context);
@@ -53,6 +54,10 @@ test('KOT polling compares visible IDs and statuses, including an empty screen',
     context.checkOrderUpdates();
     assert.equal(reloads, 0);
     orders = [{ id: 2, status: 'new' }];
+    cancellationOpen = true;
+    context.checkOrderUpdates();
+    assert.equal(reloads, 0);
+    cancellationOpen = false;
     context.checkOrderUpdates();
     assert.equal(reloads, 1);
     visible = [{ id: 'order2', getAttribute: () => 'new' }];

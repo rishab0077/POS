@@ -54,5 +54,6 @@
         <div class="options flex items-center justify-center pt-2">
             {{ $slot }}
         </div>
+        @include('components.order.cancel-order-control')
     </footer>
 </div>

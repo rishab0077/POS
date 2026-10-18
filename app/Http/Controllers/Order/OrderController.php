@@ -19,6 +19,10 @@ use App\Models\Menu;
 use Illuminate\Http\Request;
 use App\Models\Order;
 use App\Models\Table;
+use App\Models\Bill;
+use App\Models\BillOrder;
+use App\Models\PrintJob;
+use Illuminate\Validation\Rule;
 use Exception;
 use Illuminate\Support\Facades\Log;
 use App\Services\PrintJobService;
@@ -337,6 +341,79 @@ class OrderController extends Controller
         ]);
     }
 
+    public function cancel(Request $request, AuditLogger $audit)
+    {
+        abort_unless(auth()->user()?->canViewOperations(), 403);
+        $data = $request->validate([
+            'orderId' => ['required', 'integer', 'exists:orders,id'],
+            'reason' => ['required', 'string', Rule::in(config('pos.cancellation_reasons'))],
+            'notes' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        return DB::transaction(function () use ($data, $audit) {
+            $tableId = Order::whereKey($data['orderId'])->value('table_id');
+            if ($tableId) {
+                Table::lockForUpdate()->findOrFail($tableId);
+            }
+            $order = Order::lockForUpdate()->findOrFail($data['orderId']);
+            if ($order->table_id != $tableId) {
+                throw ValidationException::withMessages(['orderId' => 'This order was transferred. Refresh and try again.']);
+            }
+            if (in_array($order->status, [OrderStatus::Closed, OrderStatus::Cancelled], true)) {
+                throw ValidationException::withMessages(['orderId' => 'This order is already closed or cancelled.']);
+            }
+            $bills = Bill::withTrashed()->whereHas('orders', fn ($query) => $query->where('orders.id', $order->id))
+                ->lockForUpdate()->get();
+            if ($bills->contains(fn ($bill) => $bill->isLocked() || $bill->status === 'closed')) {
+                throw ValidationException::withMessages(['orderId' => 'This order has a final invoice. Use the return workflow.']);
+            }
+            $bills = $bills->whereNull('deleted_at');
+
+            $before = $order->only(['status', 'table_id']);
+            $order->update([
+                'status' => OrderStatus::Cancelled,
+                'cancelled_at' => now(), 'cancelled_by' => auth()->id(),
+                'cancellation_reason' => $data['reason'], 'cancellation_notes' => $data['notes'] ?? null,
+            ]);
+            foreach ($bills as $bill) {
+                BillOrder::where('bill_id', $bill->id)->where('order_id', $order->id)->delete();
+                $remaining = $bill->orders()->get();
+                if ($remaining->isEmpty()) {
+                    $bill->delete();
+                } else {
+                    BillHelper::updateExistingBill($bill, $remaining, $bill->notes,
+                        min((float) $bill->discount, (float) $remaining->sum('total')), $bill->payment_method,
+                        $bill->only(['buyer_name', 'buyer_pan', 'buyer_address']));
+                }
+            }
+            $jobs = PrintJob::whereIn('status', [PrintJob::STATUS_PENDING, PrintJob::STATUS_FAILED])
+                ->where(function ($query) use ($order, $bills) {
+                    $query->where(fn ($q) => $q->where('source_type', Order::class)->where('source_id', $order->id))
+                        ->orWhere(fn ($q) => $q->where('source_type', Bill::class)
+                            ->whereIn('source_id', $bills->pluck('id'))->where('type', 'summary_bill'));
+                })->lockForUpdate()->get();
+            foreach ($jobs as $job) {
+                $job->update(['status' => PrintJob::STATUS_CANCELLED, 'locked_until' => null,
+                    'last_error' => 'Order cancelled; this ticket or unpaid preview is no longer valid.']);
+            }
+            if ($tableId) {
+                $hasActiveOrders = Order::where('table_id', $tableId)
+                    ->whereNotIn('status', [OrderStatus::Closed->value, OrderStatus::Cancelled->value])->exists();
+                if (!$hasActiveOrders) {
+                    TableHelper::markTableAsPaid($tableId);
+                } elseif (BillHelper::activeTableOrdersFinalized($tableId)) {
+                    TableHelper::markTableAsFinalized($tableId);
+                }
+            }
+            $audit->record('order_cancelled', 'ordering', [
+                'subject' => $order, 'before' => $before,
+                'after' => $order->only(['status', 'cancelled_at', 'cancelled_by', 'cancellation_reason', 'cancellation_notes']),
+                'metadata' => ['summary' => "Order {$order->KOT} cancelled."],
+            ]);
+            return response()->json(['status' => 'success', 'message' => 'Order cancelled. Notify the kitchen if its ticket was already printed.']);
+        });
+    }
+
     public function markAsServed(Request $request)
     {
         abort_unless(auth()->user()?->canMarkOrderServed(), 403);
@@ -345,6 +422,8 @@ class OrderController extends Controller
         try {
             $order = $this->orderService->markAsServed($request->orderId);
             return response()->json(['status' => 'success', 'message' => 'Order served successfully'], 200);
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return response()->json(['error' => $e->getMessage()], 404);
         }
@@ -357,6 +436,8 @@ class OrderController extends Controller
         try {
             $order = $this->orderService->markAsReadyForPickup($request->orderId);
             return response()->json(['status' => 'success', 'message' => 'Order prepared successfully'], 200);
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return response()->json(['error' => $e->getMessage()], 404);
         }
@@ -370,6 +451,8 @@ class OrderController extends Controller
         try {
             $order = $this->orderService->markAsClosed($request->orderId);
             return response()->json(['status' => 'success', 'message' => 'Order closed successfully'], 200);
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return response()->json(['error' => $e->getMessage()], 404);
         }

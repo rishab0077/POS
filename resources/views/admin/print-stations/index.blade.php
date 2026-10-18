@@ -173,7 +173,7 @@
             <form method="GET" action="{{ route('admin.print-stations.index') }}" class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3 text-sm">
                 <select class="border rounded p-2" name="status">
                     <option value="">All statuses</option>
-                    @foreach (['pending', 'processing', 'failed', 'printed'] as $value)
+                    @foreach (['pending', 'processing', 'failed', 'printed', 'cancelled'] as $value)
                         <option value="{{ $value }}" @selected(request('status') === $value)>{{ ucfirst($value) }}</option>
                     @endforeach
                 </select>

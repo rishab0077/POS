@@ -159,6 +159,7 @@ Route::middleware(['private.access', 'auth', 'biller', 'ensure.pos.configured'])
 Route::middleware(['private.access', 'auth'])->name('order.')->prefix('order')->group(function () {
 
     Route::post('/submit', [OrderController::class, 'submit'])->name('submit');
+    Route::post('/cancel', [OrderController::class, 'cancel'])->name('cancel');
 
     Route::get('/KOT-view', [OrderController::class, 'KOTView'])->name('KOT.view');
 

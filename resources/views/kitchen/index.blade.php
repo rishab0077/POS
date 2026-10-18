@@ -180,44 +180,6 @@
             });
         }
 
-        function discardOrder(orderId) {
-            const url = '{{ route('kitchen.discard.order', [], false) }}';
-            var csrf_token = "{{ csrf_token() }}";
-            const allowedReasons = @json(config('pos.cancellation_reasons')).join("\n");
-            const reason = prompt("Cancellation reason required:\n" + allowedReasons);
-
-            if (!reason) {
-                return;
-            }
-
-            const notes = reason.toLowerCase() === "other" ? (prompt("Cancellation notes") || "") : "";
-            showLoader();
-            $.ajax({
-                type: "POST",
-                url: url,
-                headers: {
-                    'X-CSRF-TOKEN': csrf_token
-                },
-                data: {
-                    orderId: orderId,
-                    reason: reason,
-                    notes: notes
-                },
-                contentType: 'application/x-www-form-urlencoded',
-                success: function(response) {
-                    $('#order' + orderId).remove();
-                    calculateMenuSumByType();
-                    console.log('Order cancelled');
-                },
-                error: function(error) {
-                    console.error('Error ', error);
-                },
-                complete: function() {
-                    hideLoader();
-                }
-            });
-        }
-
         function completeOrder(orderId) {
             const url = '{{ route('kitchen.complete.order', [], false) }}';
             var csrf_token = "{{ csrf_token() }}";
