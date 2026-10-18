@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-10-18
 Branch: `local-lan-deployment`
-Revision reviewed: cancellation release based on `f967a0d`; restaurant deployment remains at `f967a0d`
+Revision reviewed: cancellation release `82910ee`, deployed to Sanjay's restaurant server on 2026-10-18
 
 ## Executive summary
 
@@ -124,9 +124,9 @@ Live status:
 
 ## Current readiness
 
-On 2026-10-18, release preparation reran all three JavaScript tests and the production frontend build successfully. Docker is stopped on the development PC, so the PHP/Blade results remain the recorded 2026-10-15 verification. Operator screenshots confirm Sanjay's six-service installation is still on `f967a0d`; restricted configuration backups, database gzip/copied-file SHA-256 checks, and saved running app/web images are complete. Backup restore validation was skipped. Pull, image builds, cache clearing, service recreation, and server acceptance remain pending; the separate preview is untouched. See `PROJECT_STATE.md` for backup and rollback-image locations.
+On 2026-10-18, release preparation reran all three JavaScript tests and the production frontend build successfully. Docker is stopped on the development PC, so the PHP/Blade results remain the recorded 2026-10-15 verification. Operator screenshots confirm Sanjay's installation now runs `82910ee`: protected local files survived the pull unchanged, separate release images were built, caches cleared, migrations checked with no new migration required, and all four affected services recreated. All six services are running, MySQL/Nginx are healthy, `/health` returned `status: ok`, and repeated print-agent heartbeats return HTTP 200. Restricted configuration backups, database integrity/copy checks, saved old images, and a syntax-checked rollback script are complete. The final cutover backup is 24,874 bytes. Backup restore and rollback execution were not tested. Physical printing and waiter workflow acceptance remain pending; the separate preview is untouched. Future Compose changes must use the saved release override; see `PROJECT_STATE.md` for its path and recovery instructions.
 
-The 2026-10-13 repair release is implemented, regression-tested, and deployed to the existing restaurant LAN server as of 2026-10-14. Deployment evidence comes from operator screenshots and the user's passing health result. The isolated port 8097 preview was not updated by this task; the older preview checks below describe its earlier release. Of the seven follow-up findings, the order-state issue is now fixed in the locally verified cancellation extension; the other six remain open. The live server retains all seven until the extension is deployed.
+The 2026-10-13 repair release is implemented, regression-tested, and deployed to the existing restaurant LAN server as of 2026-10-14. Deployment evidence comes from operator screenshots and the user's passing health result. The isolated port 8097 preview was not updated by this task; the older preview checks below describe its earlier release. Of the seven follow-up findings, the order-state issue is now fixed in the locally verified cancellation extension; the other six remain open. The cancellation extension was deployed on 2026-10-18; the other six findings remain open.
 
 | Area | State |
 |---|---|
@@ -141,9 +141,9 @@ The 2026-10-13 repair release is implemented, regression-tested, and deployed to
 | IRD automatic production delivery | Not authorized or enabled |
 | Split payment | Implemented and regression-tested; final phone smoke test recommended after redeployment |
 | Phone POS and Bills layout | Responsive overflow fixes implemented and regression-tested |
-| Physical stamp-card loyalty | Implemented and regression-tested; restaurant server at `f967a0d` reports no pending migrations; cashier/phone/thermal acceptance remains pending |
+| Physical stamp-card loyalty | Implemented and regression-tested; restaurant server at `82910ee` reports no pending migrations; cashier/phone/thermal acceptance remains pending |
 | LAN reliability repair release | All ten audit fixes deployed to the restaurant server; HTTP health and printer-agent communication pass; staff-device/table/physical-print acceptance pending |
-| Cancellation after KOT, including waiters | Implemented and verified locally: twelve cancellation cases and full suite 168 tests / 960 assertions pass; restaurant rollout and phone/physical-print acceptance pending |
+| Cancellation after KOT, including waiters | Implemented and verified locally: twelve cancellation cases and full suite 168 tests / 960 assertions pass; deployed to Sanjay's server as `82910ee`; HTTP health/agent communication pass; phone/workflow/physical-print acceptance pending |
 
 The isolated Compose project `restaurant-pos-split-preview` uses port 8097 and separate seeded volumes. Production images containing the newer unpaid-preview flow were built and all six services were recreated on 2026-09-07. No migrations were pending, MySQL reported healthy, and `/health` returned `{"status":"ok"}`. The older local database volume was not migrated because its stored credentials no longer match the current deployment environment; it remains untouched pending credential recovery or an explicitly authorized recovery procedure.
 
@@ -151,8 +151,8 @@ The port 8097 preview contains the split-payment, mobile/currency, unpaid-previe
 
 ## Known limitations
 
-- The cancellation extension has passed local verification but is not deployed. The live server still uses `f967a0d` and its earlier kitchen-only cancellation path. Final invoices require returns; paper already printed or an in-flight print cannot be recalled, and prepared-food wastage requires existing manual inventory operations.
-- Six follow-up audit findings remain unfixed: stale purchase edits, stale stock forms, reservation loss during refused table deletion, stale printer acknowledgements, reservation datetime casting, and purchase-void cost valuation. Order-state guards are fixed and tested in the cancellation extension, but are not part of deployed `f967a0d`.
+- The cancellation extension is deployed as `82910ee`; server health and printer communication pass, but staff workflow and physical printing remain unverified. Final invoices require returns; paper already printed or an in-flight print cannot be recalled, and prepared-food wastage requires existing manual inventory operations.
+- Six follow-up audit findings remain unfixed: stale purchase edits, stale stock forms, reservation loss during refused table deletion, stale printer acknowledgements, reservation datetime casting, and purchase-void cost valuation. Order-state guards are fixed and tested in deployed `82910ee`.
 - The repair release prevents new duplicate KOT allocation and protects existing order lines, but does not rewrite old duplicate tickets or reconstruct previously deleted history. Reports for old bills without fiscal snapshots retain a legacy fallback whose missing sale-time identity cannot be recovered.
 - Split tender currently supports exactly two direct payment methods and does not support mixing credit with a direct collection.
 - Fonepay, card, eSewa, Khalti, and bank-transfer selections are accounting records; the POS does not initiate or verify payment-gateway transactions.
@@ -166,7 +166,7 @@ The port 8097 preview contains the split-payment, mobile/currency, unpaid-previe
 
 ## 2026-10-13 LAN reliability repairs
 
-The cancellation extension was completed and verified locally on 2026-10-15. It adds shared controls for waiters and other operational staff, required reasons and actor auditing, cancellation of unfinalized ready/served tickets, unpaid-preview/table cleanup, and suppression of unsent printer jobs, manual retries, and expired-lease reclaims. Status guards prevent reviving cancelled tickets or closing unpaid tickets, and KOT polling preserves an open cancellation form. Waiters can use KOT View or open their table's existing orders through the new link. Final invoices remain protected. Twelve cancellation cases passed; the complete suite passed 168 tests / 960 assertions, with three Node regressions, PHP/JavaScript syntax, production frontend build, Blade compilation/rendered-screen tests, and diff checks. Docker recovered for that verification. No new migration is required; this release includes the cancellation extension, with restaurant rollout still pending. Whole-ticket cancellation cannot recall paper already printed or stop an in-flight print; notify the kitchen and record prepared-food wastage through existing inventory operations.
+The cancellation extension was completed and verified locally on 2026-10-15. It adds shared controls for waiters and other operational staff, required reasons and actor auditing, cancellation of unfinalized ready/served tickets, unpaid-preview/table cleanup, and suppression of unsent printer jobs, manual retries, and expired-lease reclaims. Status guards prevent reviving cancelled tickets or closing unpaid tickets, and KOT polling preserves an open cancellation form. Waiters can use KOT View or open their table's existing orders through the new link. Final invoices remain protected. Twelve cancellation cases passed; the complete suite passed 168 tests / 960 assertions, with three Node regressions, PHP/JavaScript syntax, production frontend build, Blade compilation/rendered-screen tests, and diff checks. Docker recovered for that verification. No new migration is required; the cancellation extension was deployed to Sanjay's server as `82910ee` on 2026-10-18, with staff acceptance pending. Whole-ticket cancellation cannot recall paper already printed or stop an in-flight print; notify the kitchen and record prepared-food wastage through existing inventory operations.
 
 Completed phases:
 
